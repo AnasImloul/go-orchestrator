@@ -52,7 +52,6 @@ func (lm *DefaultLifecycleManager) RegisterComponent(component Component) error 
 		Name:         name,
 		Phase:        PhaseStopped,
 		Dependencies: component.Dependencies(),
-		Priority:     component.Priority(),
 		Health: ComponentHealth{
 			Status:    HealthStatusUnknown,
 			Timestamp: time.Now(),
@@ -63,7 +62,6 @@ func (lm *DefaultLifecycleManager) RegisterComponent(component Component) error 
 		lm.logger.Info("Component registered",
 			"component", name,
 			"dependencies", component.Dependencies(),
-			"priority", component.Priority(),
 		)
 	}
 
@@ -117,27 +115,34 @@ func (lm *DefaultLifecycleManager) Start(ctx context.Context) error {
 		return fmt.Errorf("startup hooks failed: %w", err)
 	}
 
-	// Get startup order
-	startupOrder, err := lm.dag.GetStartupOrder()
+	// Get startup levels for parallel execution
+	startupLevels, err := lm.dag.GetStartupLevels()
 	if err != nil {
 		lm.phase = PhaseStopped
-		return fmt.Errorf("failed to determine startup order: %w", err)
+		return fmt.Errorf("failed to determine startup levels: %w", err)
 	}
 
-	// Start components in order
-	for _, node := range startupOrder {
-		if err := lm.startComponent(ctx, node); err != nil {
+	// Start components level by level, with parallel execution within each level
+	for levelIndex, level := range startupLevels {
+		if lm.logger != nil {
+			lm.logger.Info("Starting components at level",
+				"level", levelIndex,
+				"components", len(level),
+			)
+		}
+
+		if err := lm.startComponentsInParallel(ctx, level); err != nil {
 			if lm.logger != nil {
-				lm.logger.Error("Failed to start component, initiating rollback",
-					"component", node.Name,
+				lm.logger.Error("Failed to start components at level, initiating rollback",
+					"level", levelIndex,
 					"error", err.Error(),
 				)
 			}
 
 			// Rollback: stop all started components
-			lm.rollbackStartup(ctx, node.Name)
+			lm.rollbackStartup(ctx, "")
 			lm.phase = PhaseStopped
-			return fmt.Errorf("failed to start component %s: %w", node.Name, err)
+			return fmt.Errorf("failed to start components at level %d: %w", levelIndex, err)
 		}
 	}
 
@@ -311,6 +316,49 @@ func (lm *DefaultLifecycleManager) HealthCheck(ctx context.Context) map[string]C
 
 // Private helper methods
 
+// startComponentsInParallel starts multiple components in parallel
+func (lm *DefaultLifecycleManager) startComponentsInParallel(ctx context.Context, nodes []*Node) error {
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	if len(nodes) == 1 {
+		// Single component, no need for goroutines
+		return lm.startComponent(ctx, nodes[0])
+	}
+
+	// Use goroutines for parallel execution
+	type result struct {
+		node *Node
+		err  error
+	}
+
+	results := make(chan result, len(nodes))
+	
+	// Start all components in parallel
+	for _, node := range nodes {
+		go func(n *Node) {
+			err := lm.startComponent(ctx, n)
+			results <- result{node: n, err: err}
+		}(node)
+	}
+
+	// Collect results
+	var errors []error
+	for i := 0; i < len(nodes); i++ {
+		res := <-results
+		if res.err != nil {
+			errors = append(errors, fmt.Errorf("component %s: %w", res.node.Name, res.err))
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("failed to start components: %v", errors)
+	}
+
+	return nil
+}
+
 // startComponent starts a single component
 func (lm *DefaultLifecycleManager) startComponent(ctx context.Context, node *Node) (err error) {
 	// Add panic recovery
@@ -326,7 +374,6 @@ func (lm *DefaultLifecycleManager) startComponent(ctx context.Context, node *Nod
 	if lm.logger != nil {
 		lm.logger.Info("Starting component",
 			"component", name,
-			"priority", node.Priority,
 		)
 	}
 
@@ -359,7 +406,6 @@ func (lm *DefaultLifecycleManager) startComponent(ctx context.Context, node *Nod
 	// Fire component-specific startup hooks
 	if err := lm.fireHooks(ctx, PhaseStartup, name, map[string]interface{}{
 		"component": name,
-		"priority":  node.Priority,
 	}); err != nil {
 		lm.logger.Warn("Failed to fire startup hooks", "component", name, "error", err.Error())
 	}

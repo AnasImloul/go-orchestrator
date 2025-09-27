@@ -46,7 +46,6 @@ func main() {
 	// Add a simple feature
 	app.AddFeature(
 		orchestrator.NewFeature("example-service").
-			WithPriority(100).
 			WithServiceInstance(
 				reflect.TypeOf((*ExampleService)(nil)),
 				&ExampleService{name: "example-service"},

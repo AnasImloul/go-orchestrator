@@ -85,7 +85,6 @@ func main() {
     // Add features declaratively
     app.AddFeature(
         orchestrator.NewFeature("database").
-            WithPriority(10).
             WithServiceInstance(
                 reflect.TypeOf((*DatabaseService)(nil)).Elem(),
                 &databaseService{host: "localhost", port: 5432},
@@ -123,6 +122,7 @@ func main() {
 - **Fluent interface**: Chain method calls for clean, readable code
 - **Type-safe**: Generic helpers for service resolution
 - **Interface-based DI**: Enforces dependency on interfaces, not concrete types
+- **Parallel execution**: Independent components start simultaneously for better performance
 - **Less verbose**: Minimal boilerplate code
 
 ### Dependency Injection
@@ -151,10 +151,10 @@ service, err := orchestrator.ResolveType[DatabaseService](container)
 
 ### Lifecycle Management
 ```go
-// Automatic startup/shutdown ordering based on dependencies and priorities
+// Automatic startup/shutdown ordering based on dependencies
+// Independent components start in parallel for better performance
 app.AddFeature(
     orchestrator.NewFeature("database").
-        WithPriority(10). // Start first
         WithDependencies("config"). // Depends on config
         WithComponent(
             orchestrator.NewComponent().
@@ -164,6 +164,29 @@ app.AddFeature(
         ),
 )
 ```
+
+### Parallel Execution
+
+The orchestrator automatically groups components by dependency level and starts independent components in parallel:
+
+```go
+// These three services have no dependencies - they start in parallel at level 0
+app.AddFeature(orchestrator.NewFeature("cache"))
+app.AddFeature(orchestrator.NewFeature("metrics")) 
+app.AddFeature(orchestrator.NewFeature("logging"))
+
+// This service depends on all three - it starts at level 1 after they're ready
+app.AddFeature(
+    orchestrator.NewFeature("api").
+        WithDependencies("cache", "metrics", "logging"),
+)
+```
+
+**Execution Flow:**
+- **Level 0**: cache, metrics, logging start simultaneously
+- **Level 1**: api starts after all dependencies are ready
+
+This provides significant performance improvements over sequential startup.
 
 ## Using as External Dependency
 

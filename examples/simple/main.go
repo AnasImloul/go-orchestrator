@@ -76,7 +76,6 @@ func main() {
 	// Add database feature
 	app.AddFeature(
 		orchestrator.NewFeature("database").
-			WithPriority(10). // Start first
 			WithServiceInstance(
 				reflect.TypeOf((*DatabaseService)(nil)).Elem(),
 				&databaseService{host: "localhost", port: 5432},
@@ -110,7 +109,6 @@ func main() {
 	app.AddFeature(
 		orchestrator.NewFeature("api").
 			WithDependencies("database").
-			WithPriority(20). // Start after database
 			WithService(
 				reflect.TypeOf((*APIService)(nil)).Elem(),
 				func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {

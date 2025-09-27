@@ -93,7 +93,6 @@ func NewWithConfig(config Config) *App {
 type Feature struct {
 	Name         string
 	Dependencies []string
-	Priority     int
 	Services     []ServiceConfig
 	Component    ComponentConfig
 	RetryConfig  *lifecycle.RetryConfig
@@ -320,9 +319,6 @@ func (c *featureComponent) Dependencies() []string {
 	return c.feature.Dependencies
 }
 
-func (c *featureComponent) Priority() int {
-	return c.feature.Priority
-}
 
 func (c *featureComponent) Start(ctx context.Context) error {
 	// Services are already registered in App.Start()
@@ -370,7 +366,6 @@ func (c *featureComponent) GetRetryConfig() *lifecycle.RetryConfig {
 func NewFeature(name string) *Feature {
 	return &Feature{
 		Name:     name,
-		Priority: 100,
 		Services: make([]ServiceConfig, 0),
 		Metadata: make(map[string]string),
 	}
@@ -382,11 +377,6 @@ func (f *Feature) WithDependencies(deps ...string) *Feature {
 	return f
 }
 
-// WithPriority sets the priority for the feature.
-func (f *Feature) WithPriority(priority int) *Feature {
-	f.Priority = priority
-	return f
-}
 
 // WithService adds a service to the feature.
 func (f *Feature) WithService(serviceType reflect.Type, factory func(ctx context.Context, container *Container) (interface{}, error), lifetime Lifetime) *Feature {

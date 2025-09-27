@@ -84,7 +84,6 @@ func main() {
 	// Add database feature
 	app.AddFeature(
 		orchestrator.NewFeature("database").
-			WithPriority(10). // Start first
 			WithServiceInstance(
 				reflect.TypeOf((*DatabaseService)(nil)),
 				&DatabaseService{host: "localhost", port: 5432},
@@ -117,7 +116,6 @@ func main() {
 	// Add cache feature
 	app.AddFeature(
 		orchestrator.NewFeature("cache").
-			WithPriority(15). // Start after database
 			WithServiceInstance(
 				reflect.TypeOf((*CacheService)(nil)),
 				&CacheService{host: "localhost", port: 6379},
@@ -151,7 +149,6 @@ func main() {
 	app.AddFeature(
 		orchestrator.NewFeature("api").
 			WithDependencies("database", "cache").
-			WithPriority(20). // Start after database and cache
 			WithService(
 				reflect.TypeOf((*APIService)(nil)),
 				func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {

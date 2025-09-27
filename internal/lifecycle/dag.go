@@ -2,7 +2,6 @@ package lifecycle
 
 import (
 	"fmt"
-	"sort"
 )
 
 // DAG represents a Directed Acyclic Graph for dependency resolution
@@ -16,7 +15,6 @@ type Node struct {
 	Name         string
 	Component    Component
 	Dependencies []string
-	Priority     int
 	visited      bool
 	visiting     bool
 }
@@ -41,7 +39,6 @@ func (d *DAG) AddNode(component Component) error {
 		Name:         name,
 		Component:    component,
 		Dependencies: component.Dependencies(),
-		Priority:     component.Priority(),
 	}
 
 	d.nodes[name] = node
@@ -96,27 +93,52 @@ func (d *DAG) ValidateDependencies() error {
 	return nil
 }
 
-// GetStartupOrder returns components in the order they should be started
-func (d *DAG) GetStartupOrder() ([]*Node, error) {
+// GetStartupLevels returns components grouped by dependency level for parallel execution
+func (d *DAG) GetStartupLevels() ([][]*Node, error) {
 	if err := d.ValidateDependencies(); err != nil {
 		return nil, err
 	}
 
-	var result []*Node
-	d.resetVisited()
+	// Calculate dependency levels for each node
+	levels := make(map[string]int)
+	d.calculateLevels(levels)
 
-	// Topological sort with priority consideration
-	for name := range d.nodes {
-		if !d.nodes[name].visited {
-			if err := d.topologicalSort(name, &result); err != nil {
-				return nil, err
-			}
+	// Group nodes by level
+	levelGroups := make(map[int][]*Node)
+	for name, node := range d.nodes {
+		level := levels[name]
+		levelGroups[level] = append(levelGroups[level], node)
+	}
+
+	// Convert to ordered slice of levels
+	var result [][]*Node
+	maxLevel := 0
+	for level := range levelGroups {
+		if level > maxLevel {
+			maxLevel = level
 		}
 	}
 
-	// Sort by priority within dependency constraints
-	// Components with the same dependency level are sorted by priority
-	result = d.sortByPriorityWithinLevels(result)
+	for level := 0; level <= maxLevel; level++ {
+		if group, exists := levelGroups[level]; exists {
+			result = append(result, group)
+		}
+	}
+
+	return result, nil
+}
+
+// GetStartupOrder returns components in the order they should be started (for backward compatibility)
+func (d *DAG) GetStartupOrder() ([]*Node, error) {
+	levels, err := d.GetStartupLevels()
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*Node
+	for _, level := range levels {
+		result = append(result, level...)
+	}
 
 	return result, nil
 }
@@ -247,40 +269,6 @@ func (d *DAG) topologicalSort(name string, result *[]*Node) error {
 	return nil
 }
 
-// sortByPriorityWithinLevels sorts components by priority while respecting dependencies
-func (d *DAG) sortByPriorityWithinLevels(nodes []*Node) []*Node {
-	// Calculate dependency levels for each node
-	levels := make(map[string]int)
-	d.calculateLevels(levels)
-
-	// Group nodes by level
-	levelGroups := make(map[int][]*Node)
-	for _, node := range nodes {
-		level := levels[node.Name]
-		levelGroups[level] = append(levelGroups[level], node)
-	}
-
-	// Sort each level by priority
-	var result []*Node
-	maxLevel := 0
-	for level := range levelGroups {
-		if level > maxLevel {
-			maxLevel = level
-		}
-	}
-
-	for level := 0; level <= maxLevel; level++ {
-		if group, exists := levelGroups[level]; exists {
-			// Sort by priority (lower priority numbers first)
-			sort.Slice(group, func(i, j int) bool {
-				return group[i].Priority < group[j].Priority
-			})
-			result = append(result, group...)
-		}
-	}
-
-	return result
-}
 
 // calculateLevels calculates the dependency level for each node
 func (d *DAG) calculateLevels(levels map[string]int) {

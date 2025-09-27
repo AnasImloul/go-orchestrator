@@ -133,9 +133,6 @@ type Component interface {
 	// Dependencies returns the names of components this component depends on
 	Dependencies() []string
 
-	// Priority returns the component priority (lower numbers start first)
-	Priority() int
-
 	// Start initializes the component
 	Start(ctx context.Context) error
 
@@ -175,7 +172,6 @@ type ComponentState struct {
 	StartedAt    *time.Time
 	StoppedAt    *time.Time
 	Dependencies []string
-	Priority     int
 	Error        error
 }
 
@@ -219,7 +215,6 @@ type ComponentOption func(*ComponentConfig)
 type ComponentConfig struct {
 	Name         string
 	Dependencies []string
-	Priority     int
 	Timeout      time.Duration
 	Retries      int
 	HealthCheck  func(ctx context.Context) ComponentHealth
@@ -232,12 +227,6 @@ func WithDependencies(deps ...string) ComponentOption {
 	}
 }
 
-// WithPriority sets component priority
-func WithPriority(priority int) ComponentOption {
-	return func(c *ComponentConfig) {
-		c.Priority = priority
-	}
-}
 
 // WithTimeout sets component timeout
 func WithTimeout(timeout time.Duration) ComponentOption {
