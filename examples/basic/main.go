@@ -42,39 +42,39 @@ func main() {
 	// Add a simple feature
 	app.AddFeature(
 		orchestrator.NewFeature("basic-service").
-			WithPriority(100).
 			WithServiceInstance(
 				reflect.TypeOf((*SimpleService)(nil)),
 				&SimpleService{name: "basic-service"},
 			).
 			WithComponent(
-				func(ctx context.Context, container *orchestrator.Container) error {
-					service, err := orchestrator.ResolveType[*SimpleService](container)
-					if err != nil {
-						return err
-					}
-					return service.Start()
-				},
-				func(ctx context.Context) error {
-					service, err := orchestrator.ResolveType[*SimpleService](app.Container())
-					if err != nil {
-						return err
-					}
-					return service.Stop()
-				},
-				func(ctx context.Context) orchestrator.HealthStatus {
-					service, err := orchestrator.ResolveType[*SimpleService](app.Container())
-					if err != nil {
-						return orchestrator.HealthStatus{
-							Status:  "unhealthy",
-							Message: "Failed to resolve service",
+				orchestrator.NewComponent().
+					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
+						service, err := orchestrator.ResolveType[*SimpleService](container)
+						if err != nil {
+							return err
 						}
-					}
-					return orchestrator.HealthStatus{
-						Status:  service.Health(),
-						Message: "Service is running",
-					}
-				},
+						return service.Start()
+					}).
+					WithStop(func(ctx context.Context) error {
+						service, err := orchestrator.ResolveType[*SimpleService](app.Container())
+						if err != nil {
+							return err
+						}
+						return service.Stop()
+					}).
+					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
+						service, err := orchestrator.ResolveType[*SimpleService](app.Container())
+						if err != nil {
+							return orchestrator.HealthStatus{
+								Status:  "unhealthy",
+								Message: "Failed to resolve service",
+							}
+						}
+						return orchestrator.HealthStatus{
+							Status:  service.Health(),
+							Message: "Service is running",
+						}
+					}),
 			),
 	)
 

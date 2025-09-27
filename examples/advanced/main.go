@@ -108,64 +108,64 @@ func main() {
 	// Add database feature
 	app.AddFeature(
 		orchestrator.NewFeature("database").
-			WithPriority(10). // Start first
 			WithServiceInstance(
 				reflect.TypeOf((*DatabaseService)(nil)),
 				&DatabaseService{host: "localhost", port: 5432},
 			).
 			WithComponent(
-				func(ctx context.Context, container *orchestrator.Container) error {
-					db, err := orchestrator.ResolveType[*DatabaseService](container)
-					if err != nil {
-						return err
-					}
-					return db.Connect()
-				},
-				func(ctx context.Context) error {
-					db, err := orchestrator.ResolveType[*DatabaseService](app.Container())
-					if err != nil {
-						return err
-					}
-					return db.Disconnect()
-				},
-				func(ctx context.Context) orchestrator.HealthStatus {
-					return orchestrator.HealthStatus{
-						Status:  "healthy",
-						Message: "Database is connected",
-					}
-				},
+				orchestrator.NewComponent().
+					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
+						db, err := orchestrator.ResolveType[*DatabaseService](container)
+						if err != nil {
+							return err
+						}
+						return db.Connect()
+					}).
+					WithStop(func(ctx context.Context) error {
+						db, err := orchestrator.ResolveType[*DatabaseService](app.Container())
+						if err != nil {
+							return err
+						}
+						return db.Disconnect()
+					}).
+					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
+						return orchestrator.HealthStatus{
+							Status:  "healthy",
+							Message: "Database is connected",
+						}
+					}),
 			),
 	)
 
 	// Add cache feature
 	app.AddFeature(
 		orchestrator.NewFeature("cache").
-			WithPriority(15). // Start after database
 			WithServiceInstance(
 				reflect.TypeOf((*CacheService)(nil)),
 				&CacheService{host: "localhost", port: 6379},
 			).
 			WithComponent(
-				func(ctx context.Context, container *orchestrator.Container) error {
-					cache, err := orchestrator.ResolveType[*CacheService](container)
-					if err != nil {
-						return err
-					}
-					return cache.Connect()
-				},
-				func(ctx context.Context) error {
-					cache, err := orchestrator.ResolveType[*CacheService](app.Container())
-					if err != nil {
-						return err
-					}
-					return cache.Disconnect()
-				},
-				func(ctx context.Context) orchestrator.HealthStatus {
-					return orchestrator.HealthStatus{
-						Status:  "healthy",
-						Message: "Cache is connected",
-					}
-				},
+				orchestrator.NewComponent().
+					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
+						cache, err := orchestrator.ResolveType[*CacheService](container)
+						if err != nil {
+							return err
+						}
+						return cache.Connect()
+					}).
+					WithStop(func(ctx context.Context) error {
+						cache, err := orchestrator.ResolveType[*CacheService](app.Container())
+						if err != nil {
+							return err
+						}
+						return cache.Disconnect()
+					}).
+					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
+						return orchestrator.HealthStatus{
+							Status:  "healthy",
+							Message: "Cache is connected",
+						}
+					}),
 			),
 	)
 
@@ -173,7 +173,6 @@ func main() {
 	app.AddFeature(
 		orchestrator.NewFeature("api").
 			WithDependencies("database", "cache").
-			WithPriority(20). // Start after database and cache
 			WithService(
 				reflect.TypeOf((*APIService)(nil)),
 				func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {
@@ -190,33 +189,34 @@ func main() {
 				orchestrator.Singleton,
 			).
 			WithComponent(
-				func(ctx context.Context, container *orchestrator.Container) error {
-					api, err := orchestrator.ResolveType[*APIService](container)
-					if err != nil {
-						return err
-					}
-					return api.Start()
-				},
-				func(ctx context.Context) error {
-					api, err := orchestrator.ResolveType[*APIService](app.Container())
-					if err != nil {
-						return err
-					}
-					return api.Stop()
-				},
-				func(ctx context.Context) orchestrator.HealthStatus {
-					api, err := orchestrator.ResolveType[*APIService](app.Container())
-					if err != nil {
-						return orchestrator.HealthStatus{
-							Status:  "unhealthy",
-							Message: "Failed to resolve API service",
+				orchestrator.NewComponent().
+					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
+						api, err := orchestrator.ResolveType[*APIService](container)
+						if err != nil {
+							return err
 						}
-					}
-					return orchestrator.HealthStatus{
-						Status:  api.Health(),
-						Message: "API server is running",
-					}
-				},
+						return api.Start()
+					}).
+					WithStop(func(ctx context.Context) error {
+						api, err := orchestrator.ResolveType[*APIService](app.Container())
+						if err != nil {
+							return err
+						}
+						return api.Stop()
+					}).
+					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
+						api, err := orchestrator.ResolveType[*APIService](app.Container())
+						if err != nil {
+							return orchestrator.HealthStatus{
+								Status:  "unhealthy",
+								Message: "Failed to resolve API service",
+							}
+						}
+						return orchestrator.HealthStatus{
+							Status:  api.Health(),
+							Message: "API server is running",
+						}
+					}),
 			),
 	)
 
@@ -224,7 +224,6 @@ func main() {
 	app.AddFeature(
 		orchestrator.NewFeature("worker").
 			WithDependencies("database", "cache").
-			WithPriority(25). // Start after API
 			WithService(
 				reflect.TypeOf((*WorkerService)(nil)),
 				func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {
@@ -241,33 +240,34 @@ func main() {
 				orchestrator.Singleton,
 			).
 			WithComponent(
-				func(ctx context.Context, container *orchestrator.Container) error {
-					worker, err := orchestrator.ResolveType[*WorkerService](container)
-					if err != nil {
-						return err
-					}
-					return worker.Start()
-				},
-				func(ctx context.Context) error {
-					worker, err := orchestrator.ResolveType[*WorkerService](app.Container())
-					if err != nil {
-						return err
-					}
-					return worker.Stop()
-				},
-				func(ctx context.Context) orchestrator.HealthStatus {
-					worker, err := orchestrator.ResolveType[*WorkerService](app.Container())
-					if err != nil {
-						return orchestrator.HealthStatus{
-							Status:  "unhealthy",
-							Message: "Failed to resolve worker service",
+				orchestrator.NewComponent().
+					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
+						worker, err := orchestrator.ResolveType[*WorkerService](container)
+						if err != nil {
+							return err
 						}
-					}
-					return orchestrator.HealthStatus{
-						Status:  worker.Health(),
-						Message: "Worker is running",
-					}
-				},
+						return worker.Start()
+					}).
+					WithStop(func(ctx context.Context) error {
+						worker, err := orchestrator.ResolveType[*WorkerService](app.Container())
+						if err != nil {
+							return err
+						}
+						return worker.Stop()
+					}).
+					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
+						worker, err := orchestrator.ResolveType[*WorkerService](app.Container())
+						if err != nil {
+							return orchestrator.HealthStatus{
+								Status:  "unhealthy",
+								Message: "Failed to resolve worker service",
+							}
+						}
+						return orchestrator.HealthStatus{
+							Status:  worker.Health(),
+							Message: "Worker is running",
+						}
+					}),
 			),
 	)
 
