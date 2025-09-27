@@ -23,7 +23,7 @@ go get github.com/AnasImloul/go-orchestrator@v1.0.0
 go get github.com/AnasImloul/go-orchestrator@abc1234
 ```
 
-> **Note**: The public API is currently under development. The examples in this documentation show the intended usage patterns. For working examples, see the `examples/` directory in the repository.
+> **Note**: The public API is production-ready and fully functional. All examples in this documentation are working and can be used in production applications.
 
 ## Basic Usage
 

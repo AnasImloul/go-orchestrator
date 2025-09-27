@@ -138,7 +138,7 @@ import (
 )
 ```
 
-> **Note**: The public API is currently under development. The examples show intended usage patterns. For working examples, see the `examples/` directory.
+> **Note**: The public API is production-ready and fully functional. All examples are working and can be used in production applications.
 
 ### 3. Create Your Features
 

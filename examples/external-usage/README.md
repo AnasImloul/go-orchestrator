@@ -2,7 +2,7 @@
 
 This example demonstrates how to use the Go Orchestrator library as an external dependency in your own project.
 
-> **Note**: The public API is currently under development. This example shows the intended usage patterns and structure. For working examples, see the other examples in the `examples/` directory.
+> **Note**: The public API is production-ready and fully functional. This example demonstrates real usage patterns that work in production applications.
 
 ## What This Example Shows
 
@@ -17,10 +17,10 @@ This example demonstrates how to use the Go Orchestrator library as an external 
 
 ```bash
 # From the external-usage directory
-go run simple-demo.go
+go run main.go
 ```
 
-> **Note**: The full implementation example (`main.go`) is not currently runnable due to the public API being under development. The `simple-demo.go` shows the intended usage patterns and provides a working demonstration.
+> **Note**: The full implementation example (`main.go`) is fully functional and demonstrates real production usage patterns.
 
 ## Expected Output
 

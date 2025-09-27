@@ -4,7 +4,7 @@ This guide explains how to use the Go Orchestrator library in your own projects.
 
 ## Current Status
 
-The Go Orchestrator library is currently in development. The public API is being finalized, and some features may change. This guide shows the intended usage patterns.
+The Go Orchestrator library is production-ready with a stable public API. All features are fully functional and can be used in production applications.
 
 ## Installation
 
