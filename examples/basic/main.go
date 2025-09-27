@@ -19,7 +19,7 @@ func main() {
 	slogLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
-	
+
 	// Create logger adapter
 	logger := logger.NewSlogAdapter(slogLogger)
 

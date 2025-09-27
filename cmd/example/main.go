@@ -52,11 +52,11 @@ func (f *ExampleFeature) GetRetryConfig() *lifecycle.RetryConfig {
 
 func (f *ExampleFeature) GetMetadata() orchestrator.FeatureMetadata {
 	return orchestrator.FeatureMetadata{
-		Name:         f.name,
-		Version:      "1.0.0",
-		Description:  "Example feature for demonstration",
-		Author:       "Go Orchestrator",
-		Tags:         []string{"example", "demo"},
+		Name:        f.name,
+		Version:     "1.0.0",
+		Description: "Example feature for demonstration",
+		Author:      "Go Orchestrator",
+		Tags:        []string{"example", "demo"},
 	}
 }
 
@@ -110,7 +110,7 @@ func main() {
 	slogLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
-	
+
 	// Create logger adapter
 	logger := logger.NewSlogAdapter(slogLogger)
 

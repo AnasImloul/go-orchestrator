@@ -30,26 +30,26 @@ func (rc *RetryConfig) IsRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	
+
 	// If no specific retryable errors are configured, retry on all errors
 	if rc.RetryableErrors == nil || len(rc.RetryableErrors) == 0 {
 		return true
 	}
-	
+
 	// Check if the error matches any of the retryable errors
 	for _, retryableErr := range rc.RetryableErrors {
 		if err.Error() == retryableErr.Error() {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
 // RetryWithBackoff executes a function with retry logic and exponential backoff
 func RetryWithBackoff(ctx context.Context, config RetryConfig, operation func() error) error {
 	var lastErr error
-	
+
 	for attempt := 0; attempt < config.MaxAttempts; attempt++ {
 		// Check if context is cancelled
 		select {
@@ -57,33 +57,33 @@ func RetryWithBackoff(ctx context.Context, config RetryConfig, operation func() 
 			return ctx.Err()
 		default:
 		}
-		
+
 		err := operation()
 		if err == nil {
 			return nil
 		}
-		
+
 		lastErr = err
-		
+
 		// Check if this error should trigger a retry
 		if !config.IsRetryableError(err) {
 			return err
 		}
-		
+
 		// Don't sleep after the last attempt
 		if attempt == config.MaxAttempts-1 {
 			break
 		}
-		
+
 		// Calculate delay with exponential backoff
-		delay := time.Duration(float64(config.InitialDelay) * 
+		delay := time.Duration(float64(config.InitialDelay) *
 			pow(config.BackoffMultiplier, float64(attempt)))
-		
+
 		// Cap the delay at MaxDelay
 		if delay > config.MaxDelay {
 			delay = config.MaxDelay
 		}
-		
+
 		// Sleep with context cancellation support
 		select {
 		case <-ctx.Done():
@@ -91,7 +91,7 @@ func RetryWithBackoff(ctx context.Context, config RetryConfig, operation func() 
 		case <-time.After(delay):
 		}
 	}
-	
+
 	return lastErr
 }
 

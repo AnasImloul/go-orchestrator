@@ -9,7 +9,6 @@ import (
 	"github.com/AnasImloul/go-orchestrator/internal/logger"
 )
 
-
 // DefaultLifecycleManager implements the LifecycleManager interface
 type DefaultLifecycleManager struct {
 	dag    *DAG
@@ -345,7 +344,7 @@ func (lm *DefaultLifecycleManager) startComponent(ctx context.Context, node *Nod
 	} else {
 		startErr = node.Component.Start(ctx)
 	}
-	
+
 	if startErr != nil {
 		state.Phase = PhaseStopped
 		state.Error = startErr
@@ -405,7 +404,7 @@ func (lm *DefaultLifecycleManager) stopComponent(ctx context.Context, node *Node
 	} else {
 		stopErr = node.Component.Stop(ctx)
 	}
-	
+
 	if stopErr != nil {
 		state.Error = stopErr
 		if lm.logger != nil {

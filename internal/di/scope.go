@@ -45,7 +45,7 @@ func (s *DefaultScope) Resolve(serviceType reflect.Type) (interface{}, error) {
 	s.container.mu.RLock()
 	registration, exists := s.container.registrations[serviceType]
 	s.container.mu.RUnlock()
-	
+
 	if !exists {
 		return nil, fmt.Errorf("service of type %s is not registered", serviceType.String())
 	}

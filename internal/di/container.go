@@ -21,7 +21,6 @@ type DefaultContainer struct {
 	disposed      bool
 }
 
-
 // NewContainer creates a new DI container
 func NewContainer(config ContainerConfig, logger logger.Logger) *DefaultContainer {
 	return &DefaultContainer{
@@ -220,7 +219,7 @@ func (c *DefaultContainer) Dispose() error {
 		if instance == c {
 			continue
 		}
-		
+
 		if disposable, ok := instance.(Disposable); ok {
 			if err := disposable.Dispose(); err != nil {
 				if c.logger != nil {
@@ -379,7 +378,7 @@ func (c *DefaultContainer) createInstance(ctx context.Context, registration *Ser
 			result, err = registration.Factory(ctx, c)
 			return err
 		})
-		
+
 		if retryErr != nil {
 			return nil, retryErr
 		}
@@ -436,7 +435,7 @@ func (c *DefaultContainer) validateRegistration(registration ServiceRegistration
 func (c *DefaultContainer) checkCircularDependencies(serviceType reflect.Type, dependencies []reflect.Type) error {
 	visited := make(map[reflect.Type]bool)
 	visiting := make(map[reflect.Type]bool)
-	
+
 	// Start DFS from the current service type
 	return c.dfsCircularCheck(serviceType, visited, visiting)
 }
@@ -447,16 +446,16 @@ func (c *DefaultContainer) dfsCircularCheck(serviceType reflect.Type, visited, v
 	if visiting[serviceType] {
 		return fmt.Errorf("circular dependency detected involving type %s", serviceType.String())
 	}
-	
+
 	if visited[serviceType] {
 		return nil
 	}
-	
+
 	visiting[serviceType] = true
-	
+
 	// Get registration for this service type (no lock needed since caller holds write lock)
 	registration, exists := c.registrations[serviceType]
-	
+
 	if exists {
 		// Check dependencies of this service
 		for _, dep := range registration.Options.Dependencies {
@@ -465,10 +464,10 @@ func (c *DefaultContainer) dfsCircularCheck(serviceType reflect.Type, visited, v
 			}
 		}
 	}
-	
+
 	visiting[serviceType] = false
 	visited[serviceType] = true
-	
+
 	return nil
 }
 

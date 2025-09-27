@@ -12,7 +12,6 @@ import (
 	"github.com/AnasImloul/go-orchestrator/internal/logger"
 )
 
-
 // DefaultOrchestrator implements the Orchestrator interface
 type DefaultOrchestrator struct {
 	container         di.Container
@@ -314,23 +313,23 @@ func (o *DefaultOrchestrator) startHealthCheckRoutine() {
 				if o.GetPhase() == lifecycle.PhaseStopped {
 					return
 				}
-				
+
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				
+
 				// Use retry logic for health checks
 				var report HealthReport
 				retryConfig := lifecycle.DefaultRetryConfig()
 				retryConfig.MaxAttempts = 2 // Only retry once for health checks
 				retryConfig.InitialDelay = 100 * time.Millisecond
-				
+
 				retryErr := lifecycle.RetryWithBackoff(ctx, retryConfig, func() error {
 					report = o.HealthCheck(ctx)
 					// Consider health check successful if we get any report
 					return nil
 				})
-				
+
 				cancel()
-				
+
 				if retryErr != nil {
 					if o.logger != nil {
 						o.logger.Error("Health check failed after retries", "error", retryErr)
