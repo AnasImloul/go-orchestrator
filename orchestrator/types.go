@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/imloulanas/go-orchestrator/di"
-	"github.com/imloulanas/go-orchestrator/lifecycle"
+	"github.com/AnasImloul/go-orchestrator/di"
+	"github.com/AnasImloul/go-orchestrator/lifecycle"
 )
 
 // Orchestrator coordinates the application lifecycle and dependency injection

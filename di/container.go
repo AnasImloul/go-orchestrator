@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/imloulanas/go-orchestrator/logger"
+	"github.com/AnasImloul/go-orchestrator/logger"
 )
 
 // DefaultContainer implements the Container interface

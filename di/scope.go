@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/imloulanas/go-orchestrator/logger"
+	"github.com/AnasImloul/go-orchestrator/logger"
 )
 
 // DefaultScope implements the Scope interface

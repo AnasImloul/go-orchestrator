@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/imloulanas/go-orchestrator/di"
-	"github.com/imloulanas/go-orchestrator/lifecycle"
-	"github.com/imloulanas/go-orchestrator/logger"
+	"github.com/AnasImloul/go-orchestrator/di"
+	"github.com/AnasImloul/go-orchestrator/lifecycle"
+	"github.com/AnasImloul/go-orchestrator/logger"
 )
 
 
