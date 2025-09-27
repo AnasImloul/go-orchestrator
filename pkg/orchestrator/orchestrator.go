@@ -21,13 +21,13 @@ func NewOrchestratorWithConfig(config OrchestratorConfig) (Orchestrator, error) 
 	// Create a simple logger (external users can provide their own)
 	logger := &simpleLogger{}
 
-	// Create a simple DI container
-	container := &simpleContainer{
+	// Create a basic DI container
+	container := &basicContainer{
 		services: make(map[string]interface{}),
 	}
 
-	// Create a simple lifecycle manager
-	lifecycleManager := &simpleLifecycleManager{
+	// Create a basic lifecycle manager
+	lifecycleManager := &basicLifecycleManager{
 		components: make(map[string]lifecycle.Component),
 		phase:      lifecycle.PhaseStopped,
 		logger:     logger,

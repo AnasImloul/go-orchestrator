@@ -35,13 +35,13 @@ func (l *simpleLogger) WithComponent(component string) logger.Logger {
 	return &simpleLogger{}
 }
 
-// simpleContainer is a basic DI container implementation.
-type simpleContainer struct {
+// basicContainer is a functional DI container implementation.
+type basicContainer struct {
 	services map[string]interface{}
 	mu       sync.RWMutex
 }
 
-func (c *simpleContainer) Register(serviceType reflect.Type, factory di.Factory, options ...di.Option) error {
+func (c *basicContainer) Register(serviceType reflect.Type, factory di.Factory, options ...di.Option) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	
@@ -50,7 +50,7 @@ func (c *simpleContainer) Register(serviceType reflect.Type, factory di.Factory,
 	return nil
 }
 
-func (c *simpleContainer) RegisterInstance(serviceType reflect.Type, instance interface{}) error {
+func (c *basicContainer) RegisterInstance(serviceType reflect.Type, instance interface{}) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	
@@ -59,11 +59,11 @@ func (c *simpleContainer) RegisterInstance(serviceType reflect.Type, instance in
 	return nil
 }
 
-func (c *simpleContainer) RegisterSingleton(serviceType reflect.Type, factory di.Factory, options ...di.Option) error {
+func (c *basicContainer) RegisterSingleton(serviceType reflect.Type, factory di.Factory, options ...di.Option) error {
 	return c.Register(serviceType, factory, options...)
 }
 
-func (c *simpleContainer) Resolve(serviceType reflect.Type) (interface{}, error) {
+func (c *basicContainer) Resolve(serviceType reflect.Type) (interface{}, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	
@@ -78,36 +78,36 @@ func (c *simpleContainer) Resolve(serviceType reflect.Type) (interface{}, error)
 	return nil, fmt.Errorf("service %s not found", key)
 }
 
-func (c *simpleContainer) CreateScope() di.Scope {
-	return &simpleScope{container: c}
+func (c *basicContainer) CreateScope() di.Scope {
+	return &basicScope{container: c}
 }
 
-func (c *simpleContainer) Validate() error {
+func (c *basicContainer) Validate() error {
 	return nil
 }
 
-// simpleScope is a basic scope implementation.
-type simpleScope struct {
-	container *simpleContainer
+// basicScope is a functional scope implementation.
+type basicScope struct {
+	container *basicContainer
 }
 
-func (s *simpleScope) Resolve(serviceType reflect.Type) (interface{}, error) {
+func (s *basicScope) Resolve(serviceType reflect.Type) (interface{}, error) {
 	return s.container.Resolve(serviceType)
 }
 
-func (s *simpleScope) Dispose() error {
+func (s *basicScope) Dispose() error {
 	return nil
 }
 
-// simpleLifecycleManager is a basic lifecycle manager implementation.
-type simpleLifecycleManager struct {
+// basicLifecycleManager is a functional lifecycle manager implementation.
+type basicLifecycleManager struct {
 	components map[string]lifecycle.Component
 	phase      lifecycle.Phase
 	logger     logger.Logger
 	mu         sync.RWMutex
 }
 
-func (lm *simpleLifecycleManager) RegisterComponent(component lifecycle.Component) error {
+func (lm *basicLifecycleManager) RegisterComponent(component lifecycle.Component) error {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
 	
@@ -121,7 +121,7 @@ func (lm *simpleLifecycleManager) RegisterComponent(component lifecycle.Componen
 	return nil
 }
 
-func (lm *simpleLifecycleManager) UnregisterComponent(name string) error {
+func (lm *basicLifecycleManager) UnregisterComponent(name string) error {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
 	
@@ -130,7 +130,7 @@ func (lm *simpleLifecycleManager) UnregisterComponent(name string) error {
 	return nil
 }
 
-func (lm *simpleLifecycleManager) Start(ctx context.Context) error {
+func (lm *basicLifecycleManager) Start(ctx context.Context) error {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
 	
@@ -152,7 +152,7 @@ func (lm *simpleLifecycleManager) Start(ctx context.Context) error {
 	return nil
 }
 
-func (lm *simpleLifecycleManager) Stop(ctx context.Context) error {
+func (lm *basicLifecycleManager) Stop(ctx context.Context) error {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
 	
@@ -172,13 +172,13 @@ func (lm *simpleLifecycleManager) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (lm *simpleLifecycleManager) GetPhase() lifecycle.Phase {
+func (lm *basicLifecycleManager) GetPhase() lifecycle.Phase {
 	lm.mu.RLock()
 	defer lm.mu.RUnlock()
 	return lm.phase
 }
 
-func (lm *simpleLifecycleManager) GetComponentState(name string) (*lifecycle.ComponentState, error) {
+func (lm *basicLifecycleManager) GetComponentState(name string) (*lifecycle.ComponentState, error) {
 	lm.mu.RLock()
 	defer lm.mu.RUnlock()
 	
@@ -204,7 +204,7 @@ func (lm *simpleLifecycleManager) GetComponentState(name string) (*lifecycle.Com
 	return state, nil
 }
 
-func (lm *simpleLifecycleManager) GetAllComponentStates() map[string]*lifecycle.ComponentState {
+func (lm *basicLifecycleManager) GetAllComponentStates() map[string]*lifecycle.ComponentState {
 	lm.mu.RLock()
 	defer lm.mu.RUnlock()
 	
@@ -218,12 +218,12 @@ func (lm *simpleLifecycleManager) GetAllComponentStates() map[string]*lifecycle.
 	return states
 }
 
-func (lm *simpleLifecycleManager) AddHook(phase lifecycle.Phase, hook lifecycle.Hook) error {
-	// Simple implementation - hooks not supported
+func (lm *basicLifecycleManager) AddHook(phase lifecycle.Phase, hook lifecycle.Hook) error {
+	// Basic implementation - hooks not supported
 	return nil
 }
 
-func (lm *simpleLifecycleManager) RemoveHook(phase lifecycle.Phase, hook lifecycle.Hook) error {
-	// Simple implementation - hooks not supported
+func (lm *basicLifecycleManager) RemoveHook(phase lifecycle.Phase, hook lifecycle.Hook) error {
+	// Basic implementation - hooks not supported
 	return nil
 }
