@@ -84,11 +84,9 @@ func main() {
     
     // Add features declaratively
     app.AddFeature(
-        orchestrator.NewFeature("database").
-            WithServiceInstance(
-                reflect.TypeOf((*DatabaseService)(nil)).Elem(),
-                &databaseService{host: "localhost", port: 5432},
-            ).
+        orchestrator.WithServiceInstanceT[DatabaseService]("database",
+            &databaseService{host: "localhost", port: 5432},
+        ).
             WithComponent(
                 orchestrator.NewComponent().
                     WithStart(func(ctx context.Context, container *orchestrator.Container) error {
@@ -133,13 +131,22 @@ type DatabaseService interface {
     Disconnect() error
 }
 
-// Register services declaratively
+// Register services declaratively (two approaches)
+
+// Approach 1: Using reflection (traditional)
 app.AddFeature(
     orchestrator.NewFeature("database").
         WithServiceInstance(
             reflect.TypeOf((*DatabaseService)(nil)).Elem(),
             &databaseService{host: "localhost", port: 5432},
         ),
+)
+
+// Approach 2: Using generics (recommended - type-safe)
+app.AddFeature(
+    orchestrator.WithServiceInstanceT[DatabaseService]("database",
+        &databaseService{host: "localhost", port: 5432},
+    ),
 )
 
 // Resolve services by interface (enforced by library)

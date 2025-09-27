@@ -75,11 +75,9 @@ func main() {
 
 	// Add database feature
 	app.AddFeature(
-		orchestrator.NewFeature("database").
-			WithServiceInstance(
-				reflect.TypeOf((*DatabaseService)(nil)).Elem(),
-				&databaseService{host: "localhost", port: 5432},
-			).
+		orchestrator.WithServiceInstanceT[DatabaseService]("database",
+			&databaseService{host: "localhost", port: 5432},
+		).
 			WithComponent(
 				orchestrator.NewComponent().
 					WithStart(func(ctx context.Context, container *orchestrator.Container) error {

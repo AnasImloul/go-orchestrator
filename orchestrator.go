@@ -398,6 +398,31 @@ func (f *Feature) WithServiceInstance(serviceType reflect.Type, instance interfa
 	return f
 }
 
+// WithServiceInstanceGeneric adds a service instance to the feature using generics.
+// T must be an interface type that the instance implements.
+func WithServiceInstanceGeneric[T any](instance interface{}) func(*Feature) *Feature {
+	return func(f *Feature) *Feature {
+		serviceType := reflect.TypeOf((*T)(nil)).Elem()
+		
+		// Verify that the instance implements the interface T
+		if !reflect.TypeOf(instance).Implements(serviceType) {
+			panic(fmt.Sprintf("instance of type %T does not implement interface %s", instance, serviceType.String()))
+		}
+		
+		f.Services = append(f.Services, ServiceConfig{
+			Type:     serviceType,
+			Instance: instance,
+			Lifetime: Singleton,
+		})
+		return f
+	}
+}
+
+// WithServiceInstanceT is a helper function that creates a feature with a service instance using generics.
+func WithServiceInstanceT[T any](name string, instance interface{}) *Feature {
+	return WithServiceInstanceGeneric[T](instance)(NewFeature(name))
+}
+
 // WithComponent sets the component configuration for the feature using a builder.
 func (f *Feature) WithComponent(builder *ComponentBuilder) *Feature {
 	f.Component = builder.Build()
