@@ -334,7 +334,7 @@ func (lm *DefaultLifecycleManager) startComponentsInParallel(ctx context.Context
 	}
 
 	results := make(chan result, len(nodes))
-	
+
 	// Start all components in parallel
 	for _, node := range nodes {
 		go func(n *Node) {

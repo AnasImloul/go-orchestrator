@@ -68,7 +68,7 @@ func (c *DefaultContainer) Register(serviceType reflect.Type, factory Factory, o
 	if opts.LifetimeSet {
 		lifetime = opts.Lifetime
 	}
-	
+
 	registration := &ServiceRegistration{
 		ServiceType: serviceType,
 		Name:        opts.Name,
@@ -337,7 +337,6 @@ func (c *DefaultContainer) resolve(ctx context.Context, serviceType reflect.Type
 	if !exists {
 		return nil, fmt.Errorf("service of type %s is not registered", serviceType.String())
 	}
-	
 
 	// Handle different lifetimes
 	switch registration.Lifetime {
@@ -347,18 +346,18 @@ func (c *DefaultContainer) resolve(ctx context.Context, serviceType reflect.Type
 			success = true
 			return instance, nil
 		}
-		
+
 		// Create new singleton instance
 		instance, err := c.createInstance(ctx, registration, depth)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Store singleton
 		c.singletons[serviceType] = instance
 		success = true
 		return instance, nil
-		
+
 	case Transient:
 		// Always create new instance for transient
 		instance, err := c.createInstance(ctx, registration, depth)
@@ -367,7 +366,7 @@ func (c *DefaultContainer) resolve(ctx context.Context, serviceType reflect.Type
 		}
 		success = true
 		return instance, nil
-		
+
 	case Scoped:
 		// For scoped services, we need to resolve from a scope
 		// If no scope is provided in context, create a default scope
@@ -377,26 +376,26 @@ func (c *DefaultContainer) resolve(ctx context.Context, serviceType reflect.Type
 			scope = NewScope(c, c.logger)
 			defer scope.Dispose()
 		}
-		
+
 		instance, err := scope.Resolve(serviceType)
 		if err != nil {
 			return nil, err
 		}
 		success = true
 		return instance, nil
-		
+
 	default:
 		// Default to singleton behavior
 		if instance, exists := c.singletons[serviceType]; exists {
 			success = true
 			return instance, nil
 		}
-		
+
 		instance, err := c.createInstance(ctx, registration, depth)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		c.singletons[serviceType] = instance
 		success = true
 		return instance, nil

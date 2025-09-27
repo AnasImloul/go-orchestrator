@@ -269,7 +269,6 @@ func (d *DAG) topologicalSort(name string, result *[]*Node) error {
 	return nil
 }
 
-
 // calculateLevels calculates the dependency level for each node
 func (d *DAG) calculateLevels(levels map[string]int) {
 	d.resetVisited()

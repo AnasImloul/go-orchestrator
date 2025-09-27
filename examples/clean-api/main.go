@@ -86,8 +86,8 @@ type APIService interface {
 
 // apiService implementation
 type apiService struct {
-	port int
-	db   DatabaseService
+	port  int
+	db    DatabaseService
 	cache CacheService
 }
 
@@ -108,7 +108,6 @@ func (a *apiService) Stop() error {
 func (a *apiService) Health() string {
 	return "healthy"
 }
-
 
 func main() {
 	fmt.Println("Go Orchestrator - Clean API Example")
@@ -143,7 +142,7 @@ func main() {
 	// Add cache feature with Transient lifetime
 	app.AddFeature(
 		orchestrator.WithService[CacheService](&cacheService{
-			host: "localhost", 
+			host: "localhost",
 			port: 6379,
 		})(
 			orchestrator.NewFeature("cache"),
@@ -232,15 +231,15 @@ func main() {
 		// Singleton: Same instance every time
 		db1, _ := orchestrator.ResolveType[DatabaseService](container)
 		db2, _ := orchestrator.ResolveType[DatabaseService](container)
-		fmt.Printf("Database (Singleton): %s == %s? %t\n", 
-			db1.GetConnectionID(), db2.GetConnectionID(), 
+		fmt.Printf("Database (Singleton): %s == %s? %t\n",
+			db1.GetConnectionID(), db2.GetConnectionID(),
 			db1.GetConnectionID() == db2.GetConnectionID())
 
 		// Transient: New instance every time
 		cache1, _ := orchestrator.ResolveType[CacheService](container)
 		cache2, _ := orchestrator.ResolveType[CacheService](container)
-		fmt.Printf("Cache (Transient): %s == %s? %t\n", 
-			cache1.GetInstanceID(), cache2.GetInstanceID(), 
+		fmt.Printf("Cache (Transient): %s == %s? %t\n",
+			cache1.GetInstanceID(), cache2.GetInstanceID(),
 			cache1.GetInstanceID() == cache2.GetInstanceID())
 
 		time.Sleep(100 * time.Millisecond)

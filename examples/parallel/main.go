@@ -92,8 +92,8 @@ type APIService interface {
 
 // apiService implementation
 type apiService struct {
-	port   int
-	cache  CacheService
+	port    int
+	cache   CacheService
 	metrics MetricsService
 	logging LoggingService
 }

@@ -21,7 +21,7 @@ func (s *SomeOtherService) DoSomething() error {
 
 func main() {
 	app := orchestrator.New()
-	
+
 	// This should work - correct interface implementation
 	fmt.Println("Testing correct interface implementation...")
 	app.AddFeature(
@@ -30,7 +30,7 @@ func main() {
 		).
 			WithLifetime(orchestrator.Singleton),
 	)
-	
+
 	// This should panic - wrong interface implementation
 	fmt.Println("Testing incorrect interface implementation (should panic)...")
 	defer func() {
@@ -38,14 +38,14 @@ func main() {
 			fmt.Printf("✅ Correctly caught type safety error: %v\n", r)
 		}
 	}()
-	
+
 	app.AddFeature(
 		orchestrator.WithService[DatabaseService](&SomeOtherService{})(
 			orchestrator.NewFeature("wrong"),
 		).
 			WithLifetime(orchestrator.Singleton), // This doesn't implement DatabaseService
 	)
-	
+
 	fmt.Println("❌ Type safety check failed - this should not be reached!")
 }
 

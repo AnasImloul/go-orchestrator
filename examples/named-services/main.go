@@ -115,22 +115,22 @@ func main() {
 		// Resolve primary database (Singleton)
 		primary1, _ := orchestrator.ResolveNamedType[TestService](container, "primary-db")
 		primary2, _ := orchestrator.ResolveNamedType[TestService](container, "primary-db")
-		fmt.Printf("Primary DB (Singleton): %s == %s? %t\n", 
-			primary1.GetID(), primary2.GetID(), 
+		fmt.Printf("Primary DB (Singleton): %s == %s? %t\n",
+			primary1.GetID(), primary2.GetID(),
 			primary1.GetID() == primary2.GetID())
 
 		// Resolve secondary database (Singleton)
 		secondary1, _ := orchestrator.ResolveNamedType[TestService](container, "secondary-db")
 		secondary2, _ := orchestrator.ResolveNamedType[TestService](container, "secondary-db")
-		fmt.Printf("Secondary DB (Singleton): %s == %s? %t\n", 
-			secondary1.GetID(), secondary2.GetID(), 
+		fmt.Printf("Secondary DB (Singleton): %s == %s? %t\n",
+			secondary1.GetID(), secondary2.GetID(),
 			secondary1.GetID() == secondary2.GetID())
 
 		// Resolve cache service (Transient)
 		cache1, _ := orchestrator.ResolveNamedType[TestService](container, "cache-service")
 		cache2, _ := orchestrator.ResolveNamedType[TestService](container, "cache-service")
-		fmt.Printf("Cache Service (Transient): %s == %s? %t\n", 
-			cache1.GetID(), cache2.GetID(), 
+		fmt.Printf("Cache Service (Transient): %s == %s? %t\n",
+			cache1.GetID(), cache2.GetID(),
 			cache1.GetID() == cache2.GetID())
 
 		time.Sleep(100 * time.Millisecond)

@@ -220,28 +220,28 @@ func main() {
 		// Singleton: Same instance every time
 		db1, _ := orchestrator.ResolveType[DatabaseService](container)
 		db2, _ := orchestrator.ResolveType[DatabaseService](container)
-		fmt.Printf("Database (Singleton): %s == %s? %t\n", 
-			db1.GetConnectionID(), db2.GetConnectionID(), 
+		fmt.Printf("Database (Singleton): %s == %s? %t\n",
+			db1.GetConnectionID(), db2.GetConnectionID(),
 			db1.GetConnectionID() == db2.GetConnectionID())
 
 		// Transient: New instance every time
 		cache1, _ := orchestrator.ResolveType[CacheService](container)
 		cache2, _ := orchestrator.ResolveType[CacheService](container)
-		fmt.Printf("Cache (Transient): %s == %s? %t\n", 
-			cache1.GetInstanceID(), cache2.GetInstanceID(), 
+		fmt.Printf("Cache (Transient): %s == %s? %t\n",
+			cache1.GetInstanceID(), cache2.GetInstanceID(),
 			cache1.GetInstanceID() == cache2.GetInstanceID())
 
 		// Named services: Different instances
 		infoLogger1, _ := orchestrator.ResolveNamedType[LoggerService](container, "info-logger")
 		infoLogger2, _ := orchestrator.ResolveNamedType[LoggerService](container, "info-logger")
-		fmt.Printf("Info Logger (Transient): %s == %s? %t\n", 
-			infoLogger1.GetInstanceID(), infoLogger2.GetInstanceID(), 
+		fmt.Printf("Info Logger (Transient): %s == %s? %t\n",
+			infoLogger1.GetInstanceID(), infoLogger2.GetInstanceID(),
 			infoLogger1.GetInstanceID() == infoLogger2.GetInstanceID())
 
 		errorLogger1, _ := orchestrator.ResolveNamedType[LoggerService](container, "error-logger")
 		errorLogger2, _ := orchestrator.ResolveNamedType[LoggerService](container, "error-logger")
-		fmt.Printf("Error Logger (Transient): %s == %s? %t\n", 
-			errorLogger1.GetInstanceID(), errorLogger2.GetInstanceID(), 
+		fmt.Printf("Error Logger (Transient): %s == %s? %t\n",
+			errorLogger1.GetInstanceID(), errorLogger2.GetInstanceID(),
 			errorLogger1.GetInstanceID() == errorLogger2.GetInstanceID())
 
 		time.Sleep(100 * time.Millisecond)
@@ -250,7 +250,7 @@ func main() {
 	// Test scoped services
 	fmt.Println("\nTesting scoped services:")
 	fmt.Println("=======================")
-	
+
 	// Create a scope
 	scopedContainer := container.CreateScope()
 	defer scopedContainer.Dispose()
@@ -258,8 +258,8 @@ func main() {
 	// Resolve services within the scope
 	scopedCache1, _ := orchestrator.ResolveType[CacheService](scopedContainer)
 	scopedCache2, _ := orchestrator.ResolveType[CacheService](scopedContainer)
-	fmt.Printf("Scoped Cache: %s == %s? %t\n", 
-		scopedCache1.GetInstanceID(), scopedCache2.GetInstanceID(), 
+	fmt.Printf("Scoped Cache: %s == %s? %t\n",
+		scopedCache1.GetInstanceID(), scopedCache2.GetInstanceID(),
 		scopedCache1.GetInstanceID() == scopedCache2.GetInstanceID())
 
 	// Run for a bit

@@ -227,7 +227,6 @@ func WithDependencies(deps ...string) ComponentOption {
 	}
 }
 
-
 // WithTimeout sets component timeout
 func WithTimeout(timeout time.Duration) ComponentOption {
 	return func(c *ComponentConfig) {

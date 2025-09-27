@@ -121,8 +121,8 @@ const (
 
 // ComponentConfig represents a component configuration.
 type ComponentConfig struct {
-	Start func(ctx context.Context, container *Container) error
-	Stop  func(ctx context.Context) error
+	Start  func(ctx context.Context, container *Container) error
+	Stop   func(ctx context.Context) error
 	Health func(ctx context.Context) HealthStatus
 }
 
@@ -188,7 +188,7 @@ func (c *Container) Register(serviceType reflect.Type, factory func(ctx context.
 	default:
 		internalLifetime = di.Singleton
 	}
-	
+
 	// Register with the internal container using the proper lifetime
 	return c.container.Register(serviceType, func(ctx context.Context, cont di.Container) (interface{}, error) {
 		return factory(ctx, c)
@@ -209,7 +209,7 @@ func (c *Container) RegisterNamed(name string, serviceType reflect.Type, factory
 	default:
 		internalLifetime = di.Singleton
 	}
-	
+
 	// Register with the internal container using the proper lifetime and name
 	return c.container.Register(serviceType, func(ctx context.Context, cont di.Container) (interface{}, error) {
 		return factory(ctx, c)
@@ -249,12 +249,12 @@ func (c *Container) ResolveByName(name string) (interface{}, error) {
 func ResolveType[T any](c *Container) (T, error) {
 	var zero T
 	serviceType := reflect.TypeOf((*T)(nil)).Elem()
-	
+
 	// Enforce that T is an interface type
 	if serviceType.Kind() != reflect.Interface {
 		return zero, fmt.Errorf("ResolveType[T] requires T to be an interface type, got %s", serviceType.Kind())
 	}
-	
+
 	instance, err := c.Resolve(serviceType)
 	if err != nil {
 		return zero, err
@@ -267,17 +267,17 @@ func ResolveType[T any](c *Container) (T, error) {
 func ResolveNamedType[T any](c *Container, name string) (T, error) {
 	var zero T
 	serviceType := reflect.TypeOf((*T)(nil)).Elem()
-	
+
 	// Enforce that T is an interface type
 	if serviceType.Kind() != reflect.Interface {
 		return zero, fmt.Errorf("ResolveNamedType[T] requires T to be an interface type, got %s", serviceType.Kind())
 	}
-	
+
 	instance, err := c.ResolveByName(name)
 	if err != nil {
 		return zero, err
 	}
-	
+
 	return instance.(T), nil
 }
 
@@ -374,7 +374,7 @@ func (a *App) Start(ctx context.Context) error {
 			feature: feature,
 			app:     a,
 		}
-		
+
 		if err := a.lifecycleManager.RegisterComponent(component); err != nil {
 			return fmt.Errorf("failed to register component %s: %w", name, err)
 		}
@@ -448,7 +448,6 @@ func (c *featureComponent) Dependencies() []string {
 	return c.feature.Dependencies
 }
 
-
 func (c *featureComponent) Start(ctx context.Context) error {
 	// Services are already registered in App.Start()
 	// Just start the component
@@ -516,18 +515,17 @@ func (f *Feature) WithLifetime(lifetime Lifetime) *Feature {
 	return f
 }
 
-
 // WithService adds a service to the feature using generics.
 // T must be an interface type that the instance implements.
 func WithService[T any](instance interface{}) func(*Feature) *Feature {
 	return func(f *Feature) *Feature {
 		serviceType := reflect.TypeOf((*T)(nil)).Elem()
-		
+
 		// Verify that the instance implements the interface T
 		if !reflect.TypeOf(instance).Implements(serviceType) {
 			panic(fmt.Sprintf("instance of type %T does not implement interface %s", instance, serviceType.String()))
 		}
-		
+
 		// Create a factory that creates new instances
 		originalInstance := instance
 		factory := func(ctx context.Context, container *Container) (interface{}, error) {
@@ -535,7 +533,7 @@ func WithService[T any](instance interface{}) func(*Feature) *Feature {
 			// The DI container will handle lifetime management (singleton caching, etc.)
 			return cloneInstance(originalInstance), nil
 		}
-		
+
 		f.Services = append(f.Services, ServiceConfig{
 			Type:     serviceType,
 			Factory:  factory,
@@ -550,7 +548,7 @@ func WithService[T any](instance interface{}) func(*Feature) *Feature {
 func WithServiceFactory[T any](factory func(ctx context.Context, container *Container) (T, error)) func(*Feature) *Feature {
 	return func(f *Feature) *Feature {
 		serviceType := reflect.TypeOf((*T)(nil)).Elem()
-		
+
 		// Create a wrapper factory that returns interface{}
 		wrapperFactory := func(ctx context.Context, container *Container) (interface{}, error) {
 			result, err := factory(ctx, container)
@@ -559,7 +557,7 @@ func WithServiceFactory[T any](factory func(ctx context.Context, container *Cont
 			}
 			return result, nil
 		}
-		
+
 		f.Services = append(f.Services, ServiceConfig{
 			Type:     serviceType,
 			Factory:  wrapperFactory,
@@ -579,8 +577,6 @@ func (f *Feature) WithNamedService(name string, serviceType reflect.Type, factor
 	})
 	return f
 }
-
-
 
 // WithComponent sets the component configuration for the feature using a builder.
 func (f *Feature) WithComponent(builder *ComponentBuilder) *Feature {
@@ -605,10 +601,10 @@ func cloneInstance(original interface{}) interface{} {
 	if original == nil {
 		return nil
 	}
-	
+
 	originalValue := reflect.ValueOf(original)
 	originalType := originalValue.Type()
-	
+
 	// Handle pointers
 	if originalType.Kind() == reflect.Ptr {
 		if originalValue.IsNil() {
@@ -620,7 +616,7 @@ func cloneInstance(original interface{}) interface{} {
 		newPtr.Elem().Set(reflect.ValueOf(cloneInstance(originalValue.Elem().Interface())))
 		return newPtr.Interface()
 	}
-	
+
 	// Handle structs
 	if originalType.Kind() == reflect.Struct {
 		// Create a new struct of the same type
@@ -639,7 +635,7 @@ func cloneInstance(original interface{}) interface{} {
 		}
 		return newStruct.Elem().Interface()
 	}
-	
+
 	// Handle slices
 	if originalType.Kind() == reflect.Slice {
 		if originalValue.IsNil() {
@@ -652,7 +648,7 @@ func cloneInstance(original interface{}) interface{} {
 		}
 		return newSlice.Interface()
 	}
-	
+
 	// Handle maps
 	if originalType.Kind() == reflect.Map {
 		if originalValue.IsNil() {
@@ -666,7 +662,7 @@ func cloneInstance(original interface{}) interface{} {
 		}
 		return newMap.Interface()
 	}
-	
+
 	// Handle arrays
 	if originalType.Kind() == reflect.Array {
 		newArray := reflect.New(originalType).Elem()
@@ -676,7 +672,7 @@ func cloneInstance(original interface{}) interface{} {
 		}
 		return newArray.Interface()
 	}
-	
+
 	// For primitive types (int, string, bool, etc.), return the value directly
 	// These are already copied by value in Go
 	return original

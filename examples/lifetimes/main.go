@@ -150,22 +150,22 @@ func main() {
 		// Singleton: Same instance every time
 		db1, _ := orchestrator.ResolveType[DatabaseService](container)
 		db2, _ := orchestrator.ResolveType[DatabaseService](container)
-		fmt.Printf("Database (Singleton): %s == %s? %t\n", 
-			db1.GetConnectionID(), db2.GetConnectionID(), 
+		fmt.Printf("Database (Singleton): %s == %s? %t\n",
+			db1.GetConnectionID(), db2.GetConnectionID(),
 			db1.GetConnectionID() == db2.GetConnectionID())
 
 		// Scoped: Same instance within scope (for now, behaves like singleton)
 		cache1, _ := orchestrator.ResolveType[CacheService](container)
 		cache2, _ := orchestrator.ResolveType[CacheService](container)
-		fmt.Printf("Cache (Scoped): %s == %s? %t\n", 
-			cache1.GetInstanceID(), cache2.GetInstanceID(), 
+		fmt.Printf("Cache (Scoped): %s == %s? %t\n",
+			cache1.GetInstanceID(), cache2.GetInstanceID(),
 			cache1.GetInstanceID() == cache2.GetInstanceID())
 
 		// Transient: New instance every time
 		logger1, _ := orchestrator.ResolveType[LoggerService](container)
 		logger2, _ := orchestrator.ResolveType[LoggerService](container)
-		fmt.Printf("Logger (Transient): %s == %s? %t\n", 
-			logger1.GetInstanceID(), logger2.GetInstanceID(), 
+		fmt.Printf("Logger (Transient): %s == %s? %t\n",
+			logger1.GetInstanceID(), logger2.GetInstanceID(),
 			logger1.GetInstanceID() == logger2.GetInstanceID())
 
 		time.Sleep(100 * time.Millisecond)
