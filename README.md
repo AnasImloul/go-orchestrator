@@ -12,10 +12,38 @@ A powerful Go library for application orchestration, dependency injection, and l
 - **DAG-based Dependencies**: Directed Acyclic Graph for proper dependency ordering
 - **Extensible**: Plugin architecture for custom features and components
 
+## Project Structure
+
+This project follows the [Standard Go Project Layout](https://github.com/golang-standards/project-layout):
+
+```
+go-orchestrator/
+├── cmd/              # Example applications
+│   └── example/      # Basic example application
+├── internal/         # Private implementation (not importable)
+│   ├── di/          # Dependency injection container
+│   ├── lifecycle/   # Lifecycle management
+│   └── logger/      # Logging interface
+├── pkg/             # Public API (importable)
+│   └── orchestrator/ # Main orchestrator package
+├── examples/        # Usage examples
+│   ├── basic/       # Simple usage example
+│   └── advanced/    # Complex orchestration example
+├── docs/           # Documentation
+│   └── api.md      # API documentation
+├── .gitignore
+├── LICENSE
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── Makefile
+├── go.mod
+└── README.md
+```
+
 ## Installation
 
 ```bash
-go get github.com/imloulanas/go-orchestrator
+go get github.com/AnasImloul/go-orchestrator
 ```
 
 ## Quick Start
@@ -27,9 +55,7 @@ import (
     "context"
     "log/slog"
     
-    "github.com/imloulanas/go-orchestrator/di"
-    "github.com/imloulanas/go-orchestrator/lifecycle"
-    "github.com/imloulanas/go-orchestrator/orchestrator"
+    "github.com/AnasImloul/go-orchestrator/pkg/orchestrator"
 )
 
 func main() {
@@ -81,197 +107,73 @@ if err != nil {
 ```go
 // Type-safe resolution
 service := di.MustResolve[MyService](container)
-
-// Try resolution (returns false if not found)
-if service, ok := di.TryResolve[MyService](container); ok {
-    // Use service
-}
-
-// Get type information
-serviceType := di.TypeOf[MyService]()
 ```
 
-## Lifecycle Management
+## Examples
 
-### Creating a Component
+### Basic Example
 
-```go
-type MyComponent struct {
-    name string
-}
+See `examples/basic/main.go` for a simple usage example.
 
-func (c *MyComponent) Name() string {
-    return c.name
-}
+### Advanced Example
 
-func (c *MyComponent) Dependencies() []string {
-    return []string{"database", "cache"}
-}
+See `examples/advanced/main.go` for a complex orchestration example with multiple dependent services.
 
-func (c *MyComponent) Priority() int {
-    return 100
-}
+### Running Examples
 
-func (c *MyComponent) Start(ctx context.Context) error {
-    // Initialize component
-    return nil
-}
+```bash
+# Run the basic example
+go run examples/basic/main.go
 
-func (c *MyComponent) Stop(ctx context.Context) error {
-    // Cleanup component
-    return nil
-}
+# Run the advanced example
+go run examples/advanced/main.go
 
-func (c *MyComponent) Health(ctx context.Context) lifecycle.ComponentHealth {
-    return lifecycle.ComponentHealth{
-        Status:    lifecycle.HealthStatusHealthy,
-        Message:   "Component is healthy",
-        Timestamp: time.Now(),
-    }
-}
+# Run the command-line example
+go run cmd/example/main.go
 ```
 
-### Registering Components
+## Development
 
-```go
-manager := lifecycle.NewLifecycleManager(logger)
-manager.RegisterComponent(&MyComponent{name: "my-service"})
+### Building
 
-// Start all components in dependency order
-ctx := context.Background()
-if err := manager.Start(ctx); err != nil {
-    panic(err)
-}
+```bash
+# Build the example application
+make build
 
-// Stop all components in reverse order
-manager.Stop(ctx)
+# Run tests
+make test
+
+# Run with coverage
+make test-coverage
+
+# Format code
+make fmt
+
+# Lint code
+make lint
+
+# Run all checks
+make check
 ```
 
-## Application Orchestration
+### Project Layout
 
-### Creating a Feature
+This project follows Go standard project layout conventions:
 
-```go
-type MyFeature struct{}
+- **`pkg/`**: Public API that can be imported by external projects
+- **`internal/`**: Private implementation details that cannot be imported externally
+- **`cmd/`**: Example applications and command-line tools
+- **`examples/`**: Usage examples and tutorials
+- **`docs/`**: Documentation and API references
 
-func (f *MyFeature) GetName() string {
-    return "my-feature"
-}
+## API Documentation
 
-func (f *MyFeature) GetDependencies() []string {
-    return []string{"database"}
-}
-
-func (f *MyFeature) GetPriority() int {
-    return 200
-}
-
-func (f *MyFeature) RegisterServices(container di.Container) error {
-    // Register services for this feature
-    return container.RegisterSingleton(di.TypeOf[MyService](), func(ctx context.Context, c di.Container) (interface{}, error) {
-        return &MyService{}, nil
-    })
-}
-
-func (f *MyFeature) CreateComponent(container di.Container) (lifecycle.Component, error) {
-    return &MyComponent{}, nil
-}
-
-func (f *MyFeature) GetMetadata() orchestrator.FeatureMetadata {
-    return orchestrator.FeatureMetadata{
-        Name:        "my-feature",
-        Description: "My awesome feature",
-        Version:     "1.0.0",
-    }
-}
-```
-
-## Configuration
-
-### Container Configuration
-
-```go
-config := di.ContainerConfig{
-    EnableValidation:    true,
-    EnableCircularCheck: true,
-    EnableInterception:  false,
-    DefaultLifetime:     di.Singleton,
-    MaxResolutionDepth:  50,
-    EnableMetrics:       true,
-}
-
-container := di.NewContainer(config, logger)
-```
-
-### Orchestrator Configuration
-
-```go
-config := orchestrator.OrchestratorConfig{
-    StartupTimeout:       30 * time.Second,
-    ShutdownTimeout:      15 * time.Second,
-    HealthCheckInterval:  30 * time.Second,
-    EnableMetrics:        true,
-    EnableTracing:        false,
-}
-
-orch, err := orchestrator.NewOrchestrator(config, logger)
-```
-
-## Health Checking
-
-```go
-// Perform health check
-report := orch.HealthCheck(ctx)
-
-fmt.Printf("Overall Status: %s\n", report.Status)
-fmt.Printf("Healthy Features: %d\n", report.Summary.HealthyFeatures)
-fmt.Printf("Unhealthy Features: %d\n", report.Summary.UnhealthyFeatures)
-
-// Check specific feature health
-if featureHealth, exists := report.Features["my-feature"]; exists {
-    fmt.Printf("Feature Status: %s\n", featureHealth.Status)
-}
-```
-
-## Advanced Features
-
-### Service Interceptors
-
-```go
-interceptor := di.InterceptorFunc(func(ctx context.Context, serviceType reflect.Type, next func() (interface{}, error)) (interface{}, error) {
-    // Pre-processing
-    fmt.Printf("Creating service: %s\n", serviceType.String())
-    
-    // Call next in chain
-    instance, err := next()
-    if err != nil {
-        return nil, err
-    }
-    
-    // Post-processing
-    fmt.Printf("Service created: %T\n", instance)
-    return instance, nil
-})
-
-container.Register(di.TypeOf[MyService](), factory, di.WithInterceptors(interceptor))
-```
-
-### Lifecycle Hooks
-
-```go
-hook := func(ctx context.Context, event lifecycle.Event) error {
-    fmt.Printf("Lifecycle event: %s for component %s\n", event.Phase, event.Component)
-    return nil
-}
-
-manager.AddHook(lifecycle.PhaseStartup, hook)
-manager.AddHook(lifecycle.PhaseShutdown, hook)
-```
-
-## License
-
-MIT License - see LICENSE file for details.
+See [docs/api.md](docs/api.md) for comprehensive API documentation.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

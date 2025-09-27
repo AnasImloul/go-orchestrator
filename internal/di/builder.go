@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/AnasImloul/go-orchestrator/logger"
+	"github.com/AnasImloul/go-orchestrator/internal/logger"
 )
 
 // DefaultContainerBuilder implements the ContainerBuilder interface

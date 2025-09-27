@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/AnasImloul/go-orchestrator/logger"
+	"github.com/AnasImloul/go-orchestrator/internal/logger"
 )
 
 // DefaultScope implements the Scope interface
@@ -41,8 +41,11 @@ func (s *DefaultScope) Resolve(serviceType reflect.Type) (interface{}, error) {
 		return instance, nil
 	}
 
-	// Get registration from container
+	// Get registration from container with proper locking
+	s.container.mu.RLock()
 	registration, exists := s.container.registrations[serviceType]
+	s.container.mu.RUnlock()
+	
 	if !exists {
 		return nil, fmt.Errorf("service of type %s is not registered", serviceType.String())
 	}
@@ -73,9 +76,10 @@ func (s *DefaultScope) Resolve(serviceType reflect.Type) (interface{}, error) {
 
 // ResolveByName resolves a service by name within this scope
 func (s *DefaultScope) ResolveByName(name string) (interface{}, error) {
-	s.mu.RLock()
+	// Get registration from container with proper locking
+	s.container.mu.RLock()
 	registration, exists := s.container.namedServices[name]
-	s.mu.RUnlock()
+	s.container.mu.RUnlock()
 
 	if !exists {
 		return nil, fmt.Errorf("service with name '%s' not found", name)

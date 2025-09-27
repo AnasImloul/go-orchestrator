@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AnasImloul/go-orchestrator/logger"
+	"github.com/AnasImloul/go-orchestrator/internal/logger"
 )
 
 
@@ -313,7 +313,14 @@ func (lm *DefaultLifecycleManager) HealthCheck(ctx context.Context) map[string]C
 // Private helper methods
 
 // startComponent starts a single component
-func (lm *DefaultLifecycleManager) startComponent(ctx context.Context, node *Node) error {
+func (lm *DefaultLifecycleManager) startComponent(ctx context.Context, node *Node) (err error) {
+	// Add panic recovery
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic during component start %s: %v", node.Name, r)
+		}
+	}()
+
 	name := node.Name
 	state := lm.states[name]
 
@@ -329,12 +336,21 @@ func (lm *DefaultLifecycleManager) startComponent(ctx context.Context, node *Nod
 	now := time.Now()
 	state.StartedAt = &now
 
-	// Start the component
-	if err := node.Component.Start(ctx); err != nil {
+	// Start the component with retry logic if configured
+	var startErr error
+	if retryConfig := node.Component.GetRetryConfig(); retryConfig != nil {
+		startErr = RetryWithBackoff(ctx, *retryConfig, func() error {
+			return node.Component.Start(ctx)
+		})
+	} else {
+		startErr = node.Component.Start(ctx)
+	}
+	
+	if startErr != nil {
 		state.Phase = PhaseStopped
-		state.Error = err
+		state.Error = startErr
 		state.StartedAt = nil
-		return err
+		return startErr
 	}
 
 	// Update state
@@ -380,13 +396,22 @@ func (lm *DefaultLifecycleManager) stopComponent(ctx context.Context, node *Node
 	// Update state
 	state.Phase = PhaseShutdown
 
-	// Stop the component
-	if err := node.Component.Stop(ctx); err != nil {
-		state.Error = err
+	// Stop the component with retry logic if configured
+	var stopErr error
+	if retryConfig := node.Component.GetRetryConfig(); retryConfig != nil {
+		stopErr = RetryWithBackoff(ctx, *retryConfig, func() error {
+			return node.Component.Stop(ctx)
+		})
+	} else {
+		stopErr = node.Component.Stop(ctx)
+	}
+	
+	if stopErr != nil {
+		state.Error = stopErr
 		if lm.logger != nil {
 			lm.logger.Error("Component stop failed",
 				"component", name,
-				"error", err.Error(),
+				"error", stopErr.Error(),
 			)
 		}
 		// Continue with shutdown despite error

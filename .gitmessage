@@ -1,0 +1,26 @@
+# <type>(<scope>): <subject>
+#
+# <body>
+#
+# <footer>
+
+# Type should be one of the following:
+# * feat: A new feature
+# * fix: A bug fix
+# * docs: Documentation only changes
+# * style: Changes that do not affect the meaning of the code
+# * refactor: A code change that neither fixes a bug nor adds a feature
+# * perf: A code change that improves performance
+# * test: Adding missing tests or correcting existing tests
+# * chore: Changes to the build process or auxiliary tools
+#
+# Scope should be the area of the codebase affected (e.g., di, lifecycle, orchestrator)
+# Subject should be a short description of the change
+# Body should provide more detail about the change
+# Footer should contain any breaking changes or issue references
+#
+# Examples:
+# feat(di): add support for scoped services
+# fix(lifecycle): resolve deadlock in component disposal
+# docs(api): update orchestrator interface documentation
+# refactor(container): simplify service registration logic

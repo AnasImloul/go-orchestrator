@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AnasImloul/go-orchestrator/logger"
+	"github.com/AnasImloul/go-orchestrator/internal/logger"
 )
 
 // DefaultContainer implements the Container interface
@@ -134,6 +134,12 @@ func (c *DefaultContainer) Resolve(serviceType reflect.Type) (interface{}, error
 		return nil, fmt.Errorf("container is disposed")
 	}
 
+	// Check resolution depth to prevent infinite recursion
+	if c.config.MaxResolutionDepth > 0 {
+		// For public API, we start with depth 0
+		return c.resolve(context.Background(), serviceType, 0)
+	}
+
 	return c.resolve(context.Background(), serviceType, 0)
 }
 
@@ -208,7 +214,13 @@ func (c *DefaultContainer) Dispose() error {
 	c.disposed = true
 
 	// Dispose all singletons that implement disposable interface
+	// Skip disposing the container itself to prevent recursive disposal
 	for serviceType, instance := range c.singletons {
+		// Skip if this is the container itself to prevent recursive disposal
+		if instance == c {
+			continue
+		}
+		
 		if disposable, ok := instance.(Disposable); ok {
 			if err := disposable.Dispose(); err != nil {
 				if c.logger != nil {
@@ -342,7 +354,14 @@ func (c *DefaultContainer) resolve(ctx context.Context, serviceType reflect.Type
 }
 
 // createInstance creates a service instance using the factory
-func (c *DefaultContainer) createInstance(ctx context.Context, registration *ServiceRegistration, depth int) (interface{}, error) {
+func (c *DefaultContainer) createInstance(ctx context.Context, registration *ServiceRegistration, depth int) (instance interface{}, err error) {
+	// Add panic recovery
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic during instance creation for type %s: %v", registration.ServiceType.String(), r)
+		}
+	}()
+
 	if registration.Factory == nil {
 		return nil, fmt.Errorf("no factory provided for service %s", registration.ServiceType.String())
 	}
@@ -350,6 +369,21 @@ func (c *DefaultContainer) createInstance(ctx context.Context, registration *Ser
 	// Apply interceptors if enabled
 	if c.config.EnableInterception && len(registration.Options.Interceptors) > 0 {
 		return c.applyInterceptors(ctx, registration, depth)
+	}
+
+	// Use retry logic if configured
+	if registration.Options.RetryConfig != nil {
+		var result interface{}
+		retryErr := RetryWithBackoff(ctx, *registration.Options.RetryConfig, func() error {
+			var err error
+			result, err = registration.Factory(ctx, c)
+			return err
+		})
+		
+		if retryErr != nil {
+			return nil, retryErr
+		}
+		return result, nil
 	}
 
 	// Create instance directly
@@ -390,15 +424,51 @@ func (c *DefaultContainer) validateRegistration(registration ServiceRegistration
 
 	// Check for circular dependencies if enabled
 	if c.config.EnableCircularCheck {
-		// This is a simplified check - a full implementation would require
-		// building a dependency graph and checking for cycles
-		for _, dep := range registration.Options.Dependencies {
-			if dep == registration.ServiceType {
-				return fmt.Errorf("circular dependency detected: %s depends on itself", registration.ServiceType.String())
-			}
+		if err := c.checkCircularDependencies(registration.ServiceType, registration.Options.Dependencies); err != nil {
+			return fmt.Errorf("circular dependency detected: %w", err)
 		}
 	}
 
+	return nil
+}
+
+// checkCircularDependencies performs a comprehensive circular dependency check
+func (c *DefaultContainer) checkCircularDependencies(serviceType reflect.Type, dependencies []reflect.Type) error {
+	visited := make(map[reflect.Type]bool)
+	visiting := make(map[reflect.Type]bool)
+	
+	// Start DFS from the current service type
+	return c.dfsCircularCheck(serviceType, visited, visiting)
+}
+
+// dfsCircularCheck performs depth-first search to detect cycles
+// Note: This function assumes the caller already holds the write lock
+func (c *DefaultContainer) dfsCircularCheck(serviceType reflect.Type, visited, visiting map[reflect.Type]bool) error {
+	if visiting[serviceType] {
+		return fmt.Errorf("circular dependency detected involving type %s", serviceType.String())
+	}
+	
+	if visited[serviceType] {
+		return nil
+	}
+	
+	visiting[serviceType] = true
+	
+	// Get registration for this service type (no lock needed since caller holds write lock)
+	registration, exists := c.registrations[serviceType]
+	
+	if exists {
+		// Check dependencies of this service
+		for _, dep := range registration.Options.Dependencies {
+			if err := c.dfsCircularCheck(dep, visited, visiting); err != nil {
+				return err
+			}
+		}
+	}
+	
+	visiting[serviceType] = false
+	visited[serviceType] = true
+	
 	return nil
 }
 

@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AnasImloul/go-orchestrator/di"
-	"github.com/AnasImloul/go-orchestrator/lifecycle"
-	"github.com/AnasImloul/go-orchestrator/logger"
+	"github.com/AnasImloul/go-orchestrator/internal/di"
+	"github.com/AnasImloul/go-orchestrator/internal/lifecycle"
+	"github.com/AnasImloul/go-orchestrator/internal/logger"
 )
 
 
@@ -257,10 +257,8 @@ func (o *DefaultOrchestrator) registerCoreServices() error {
 		return fmt.Errorf("failed to register lifecycle manager: %w", err)
 	}
 
-	// Register the orchestrator itself
-	if err := o.container.RegisterInstance(reflect.TypeOf((*Orchestrator)(nil)).Elem(), o); err != nil {
-		return fmt.Errorf("failed to register orchestrator: %w", err)
-	}
+	// Note: We don't register the orchestrator itself to avoid circular disposal issues
+	// The orchestrator manages the container, so it should not be managed by it
 
 	return nil
 }
@@ -300,12 +298,45 @@ func (o *DefaultOrchestrator) startHealthCheckRoutine() {
 	o.healthCheckTicker = time.NewTicker(o.config.HealthCheckInterval)
 
 	go func() {
+		// Add panic recovery for the goroutine
+		defer func() {
+			if r := recover(); r != nil {
+				if o.logger != nil {
+					o.logger.Error("Panic in health check routine", "panic", r)
+				}
+			}
+		}()
+
 		for {
 			select {
 			case <-o.healthCheckTicker.C:
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				report := o.HealthCheck(ctx)
+				// Check if orchestrator is still running
+				if o.GetPhase() == lifecycle.PhaseStopped {
+					return
+				}
+				
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				
+				// Use retry logic for health checks
+				var report HealthReport
+				retryConfig := lifecycle.DefaultRetryConfig()
+				retryConfig.MaxAttempts = 2 // Only retry once for health checks
+				retryConfig.InitialDelay = 100 * time.Millisecond
+				
+				retryErr := lifecycle.RetryWithBackoff(ctx, retryConfig, func() error {
+					report = o.HealthCheck(ctx)
+					// Consider health check successful if we get any report
+					return nil
+				})
+				
 				cancel()
+				
+				if retryErr != nil {
+					if o.logger != nil {
+						o.logger.Error("Health check failed after retries", "error", retryErr)
+					}
+					continue
+				}
 
 				if report.Status != HealthStatusHealthy {
 					if o.logger != nil {

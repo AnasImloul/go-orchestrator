@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/AnasImloul/go-orchestrator/di"
-	"github.com/AnasImloul/go-orchestrator/lifecycle"
+	"github.com/AnasImloul/go-orchestrator/internal/di"
+	"github.com/AnasImloul/go-orchestrator/internal/lifecycle"
 )
 
 // Orchestrator coordinates the application lifecycle and dependency injection
@@ -48,6 +48,9 @@ type Feature interface {
 
 	// CreateComponent creates the lifecycle component for this feature
 	CreateComponent(container di.Container) (lifecycle.Component, error)
+
+	// GetRetryConfig returns retry configuration for this feature (optional)
+	GetRetryConfig() *lifecycle.RetryConfig
 
 	// GetMetadata returns feature metadata
 	GetMetadata() FeatureMetadata
@@ -193,4 +196,8 @@ func (w *ComponentWrapper) Health(ctx context.Context) lifecycle.ComponentHealth
 		Message:   "Component not initialized",
 		Timestamp: time.Now(),
 	}
+}
+
+func (w *ComponentWrapper) GetRetryConfig() *lifecycle.RetryConfig {
+	return w.feature.GetRetryConfig()
 }
