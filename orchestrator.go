@@ -127,6 +127,41 @@ type ComponentConfig struct {
 	Health func(ctx context.Context) HealthStatus
 }
 
+// ComponentBuilder provides a fluent interface for building component configurations.
+type ComponentBuilder struct {
+	config ComponentConfig
+}
+
+// NewComponent creates a new component builder.
+func NewComponent() *ComponentBuilder {
+	return &ComponentBuilder{
+		config: ComponentConfig{},
+	}
+}
+
+// WithStart sets the start function for the component.
+func (cb *ComponentBuilder) WithStart(start func(ctx context.Context, container *Container) error) *ComponentBuilder {
+	cb.config.Start = start
+	return cb
+}
+
+// WithStop sets the stop function for the component.
+func (cb *ComponentBuilder) WithStop(stop func(ctx context.Context) error) *ComponentBuilder {
+	cb.config.Stop = stop
+	return cb
+}
+
+// WithHealth sets the health check function for the component.
+func (cb *ComponentBuilder) WithHealth(health func(ctx context.Context) HealthStatus) *ComponentBuilder {
+	cb.config.Health = health
+	return cb
+}
+
+// Build returns the component configuration.
+func (cb *ComponentBuilder) Build() ComponentConfig {
+	return cb.config
+}
+
 // HealthStatus represents the health status of a component.
 type HealthStatus struct {
 	Status  string
@@ -158,10 +193,17 @@ func (c *Container) Resolve(serviceType reflect.Type) (interface{}, error) {
 	return c.container.Resolve(serviceType)
 }
 
-// ResolveType resolves a service by type.
+// ResolveType resolves a service by interface type.
+// T must be an interface type, not a concrete struct.
 func ResolveType[T any](c *Container) (T, error) {
 	var zero T
-	serviceType := reflect.TypeOf(zero)
+	serviceType := reflect.TypeOf((*T)(nil)).Elem()
+	
+	// Enforce that T is an interface type
+	if serviceType.Kind() != reflect.Interface {
+		return zero, fmt.Errorf("ResolveType[T] requires T to be an interface type, got %s", serviceType.Kind())
+	}
+	
 	instance, err := c.container.Resolve(serviceType)
 	if err != nil {
 		return zero, err
@@ -169,7 +211,8 @@ func ResolveType[T any](c *Container) (T, error) {
 	return instance.(T), nil
 }
 
-// MustResolveType resolves a service by type, panicking on error.
+// MustResolveType resolves a service by interface type, panicking on error.
+// T must be an interface type, not a concrete struct.
 func MustResolveType[T any](c *Container) T {
 	instance, err := ResolveType[T](c)
 	if err != nil {
@@ -365,13 +408,9 @@ func (f *Feature) WithServiceInstance(serviceType reflect.Type, instance interfa
 	return f
 }
 
-// WithComponent sets the component configuration for the feature.
-func (f *Feature) WithComponent(start func(ctx context.Context, container *Container) error, stop func(ctx context.Context) error, health func(ctx context.Context) HealthStatus) *Feature {
-	f.Component = ComponentConfig{
-		Start:  start,
-		Stop:   stop,
-		Health: health,
-	}
+// WithComponent sets the component configuration for the feature using a builder.
+func (f *Feature) WithComponent(builder *ComponentBuilder) *Feature {
+	f.Component = builder.Build()
 	return f
 }
 

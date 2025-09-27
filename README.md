@@ -87,19 +87,19 @@ func main() {
         orchestrator.NewFeature("database").
             WithPriority(10).
             WithServiceInstance(
-                reflect.TypeOf((*DatabaseService)(nil)),
-                &DatabaseService{host: "localhost", port: 5432},
+                reflect.TypeOf((*DatabaseService)(nil)).Elem(),
+                &databaseService{host: "localhost", port: 5432},
             ).
             WithComponent(
-                func(ctx context.Context, container *orchestrator.Container) error {
-                    db, _ := orchestrator.ResolveType[*DatabaseService](container)
-                    return db.Connect()
-                },
-                func(ctx context.Context) error {
-                    db, _ := orchestrator.ResolveType[*DatabaseService](app.Container())
-                    return db.Disconnect()
-                },
-                nil, // No health check
+                orchestrator.NewComponent().
+                    WithStart(func(ctx context.Context, container *orchestrator.Container) error {
+                        db, _ := orchestrator.ResolveType[DatabaseService](container)
+                        return db.Connect()
+                    }).
+                    WithStop(func(ctx context.Context) error {
+                        db, _ := orchestrator.ResolveType[DatabaseService](app.Container())
+                        return db.Disconnect()
+                    }),
             ),
     )
     
@@ -122,24 +122,31 @@ func main() {
 - **Single entry point**: Import only `github.com/AnasImloul/go-orchestrator`
 - **Fluent interface**: Chain method calls for clean, readable code
 - **Type-safe**: Generic helpers for service resolution
+- **Interface-based DI**: Enforces dependency on interfaces, not concrete types
 - **Less verbose**: Minimal boilerplate code
 
 ### Dependency Injection
 ```go
+// Define interfaces (best practice)
+type DatabaseService interface {
+    Connect() error
+    Disconnect() error
+}
+
 // Register services declaratively
 app.AddFeature(
-    orchestrator.NewFeature("my-service").
-        WithService(
-            reflect.TypeOf((*MyService)(nil)),
-            func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {
-                return &MyService{}, nil
-            },
-            orchestrator.Singleton,
+    orchestrator.NewFeature("database").
+        WithServiceInstance(
+            reflect.TypeOf((*DatabaseService)(nil)).Elem(),
+            &databaseService{host: "localhost", port: 5432},
         ),
 )
 
-// Resolve services type-safely
-service, err := orchestrator.ResolveType[*MyService](container)
+// Resolve services by interface (enforced by library)
+service, err := orchestrator.ResolveType[DatabaseService](container)
+
+// ❌ This will fail at runtime - concrete types not allowed
+// service, err := orchestrator.ResolveType[*databaseService](container)
 ```
 
 ### Lifecycle Management
@@ -149,7 +156,12 @@ app.AddFeature(
     orchestrator.NewFeature("database").
         WithPriority(10). // Start first
         WithDependencies("config"). // Depends on config
-        WithComponent(startFunc, stopFunc, healthFunc),
+        WithComponent(
+            orchestrator.NewComponent().
+                WithStart(startFunc).
+                WithStop(stopFunc).
+                WithHealth(healthFunc),
+        ),
 )
 ```
 

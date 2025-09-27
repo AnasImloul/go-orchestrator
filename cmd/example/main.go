@@ -52,33 +52,34 @@ func main() {
 				&ExampleService{name: "example-service"},
 			).
 			WithComponent(
-				func(ctx context.Context, container *orchestrator.Container) error {
-					service, err := orchestrator.ResolveType[*ExampleService](container)
-					if err != nil {
-						return err
-					}
-					return service.Start()
-				},
-				func(ctx context.Context) error {
-					service, err := orchestrator.ResolveType[*ExampleService](app.Container())
-					if err != nil {
-						return err
-					}
-					return service.Stop()
-				},
-				func(ctx context.Context) orchestrator.HealthStatus {
-					service, err := orchestrator.ResolveType[*ExampleService](app.Container())
-					if err != nil {
-						return orchestrator.HealthStatus{
-							Status:  "unhealthy",
-							Message: "Failed to resolve service",
+				orchestrator.NewComponent().
+					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
+						service, err := orchestrator.ResolveType[*ExampleService](container)
+						if err != nil {
+							return err
 						}
-					}
-					return orchestrator.HealthStatus{
-						Status:  service.Health(),
-						Message: "Service is running",
-					}
-				},
+						return service.Start()
+					}).
+					WithStop(func(ctx context.Context) error {
+						service, err := orchestrator.ResolveType[*ExampleService](app.Container())
+						if err != nil {
+							return err
+						}
+						return service.Stop()
+					}).
+					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
+						service, err := orchestrator.ResolveType[*ExampleService](app.Container())
+						if err != nil {
+							return orchestrator.HealthStatus{
+								Status:  "unhealthy",
+								Message: "Failed to resolve service",
+							}
+						}
+						return orchestrator.HealthStatus{
+							Status:  service.Health(),
+							Message: "Service is running",
+						}
+					}),
 			),
 	)
 
