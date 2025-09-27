@@ -357,10 +357,12 @@ func (lm *DefaultLifecycleManager) startComponent(ctx context.Context, node *Nod
 	state.Error = nil
 
 	// Fire component-specific startup hooks
-	lm.fireHooks(ctx, PhaseStartup, name, map[string]interface{}{
+	if err := lm.fireHooks(ctx, PhaseStartup, name, map[string]interface{}{
 		"component": name,
 		"priority":  node.Priority,
-	})
+	}); err != nil {
+		lm.logger.Warn("Failed to fire startup hooks", "component", name, "error", err.Error())
+	}
 
 	if lm.logger != nil {
 		lm.logger.Info("Component started successfully",
@@ -422,9 +424,11 @@ func (lm *DefaultLifecycleManager) stopComponent(ctx context.Context, node *Node
 	state.StoppedAt = &now
 
 	// Fire component-specific shutdown hooks
-	lm.fireHooks(ctx, PhaseShutdown, name, map[string]interface{}{
+	if err := lm.fireHooks(ctx, PhaseShutdown, name, map[string]interface{}{
 		"component": name,
-	})
+	}); err != nil {
+		lm.logger.Warn("Failed to fire shutdown hooks", "component", name, "error", err.Error())
+	}
 
 	if lm.logger != nil {
 		lm.logger.Info("Component stopped",
@@ -451,7 +455,9 @@ func (lm *DefaultLifecycleManager) rollbackStartup(ctx context.Context, failedCo
 		}
 
 		if state := lm.states[name]; state.Phase == PhaseRunning {
-			lm.stopComponent(ctx, node)
+			if err := lm.stopComponent(ctx, node); err != nil {
+				lm.logger.Warn("Failed to stop component during cleanup", "component", name, "error", err.Error())
+			}
 		}
 	}
 }

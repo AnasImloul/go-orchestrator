@@ -284,7 +284,7 @@ func (rc *RetryConfig) IsRetryableError(err error) bool {
 	}
 
 	// If no specific retryable errors are configured, retry on all errors
-	if rc.RetryableErrors == nil || len(rc.RetryableErrors) == 0 {
+	if len(rc.RetryableErrors) == 0 {
 		return true
 	}
 
