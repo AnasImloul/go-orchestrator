@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/AnasImloul/go-orchestrator"
@@ -75,26 +74,18 @@ func main() {
 
 	// Add database feature
 	app.AddFeature(
-		orchestrator.WithServiceInstanceGeneric[DatabaseService](
-			&databaseService{host: "localhost", port: 5432},
-			orchestrator.Singleton,
-		)(orchestrator.NewFeature("database")).
+		orchestrator.WithService[DatabaseService](&databaseService{host: "localhost", port: 5432})(
+			orchestrator.NewFeature("database"),
+		).
+			WithLifetime(orchestrator.Singleton).
 			WithComponent(
 				orchestrator.NewComponent().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						db, err := orchestrator.ResolveType[DatabaseService](container)
-						if err != nil {
-							return err
-						}
+					WithStart(orchestrator.WithStartFunc[DatabaseService](func(db DatabaseService) error {
 						return db.Connect()
-					}).
-					WithStop(func(ctx context.Context) error {
-						db, err := orchestrator.ResolveType[DatabaseService](app.Container())
-						if err != nil {
-							return err
-						}
+					})).
+					WithStop(orchestrator.WithStopFuncWithApp[DatabaseService](app, func(db DatabaseService) error {
 						return db.Disconnect()
-					}).
+					})).
 					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
 						return orchestrator.HealthStatus{
 							Status:  "healthy",
@@ -106,48 +97,33 @@ func main() {
 
 	// Add API feature that depends on database
 	app.AddFeature(
-		orchestrator.NewFeature("api").
-			WithDependencies("database").
-			WithService(
-				reflect.TypeOf((*APIService)(nil)).Elem(),
-				func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {
-					db, err := orchestrator.ResolveType[DatabaseService](container)
-					if err != nil {
-						return nil, err
-					}
-					return &apiService{port: 8080, db: db}, nil
-				},
-				orchestrator.Singleton,
-			).
+		orchestrator.WithServiceFactory[APIService](
+			func(ctx context.Context, container *orchestrator.Container) (APIService, error) {
+				db, err := orchestrator.ResolveType[DatabaseService](container)
+				if err != nil {
+					return nil, err
+				}
+				return &apiService{port: 8080, db: db}, nil
+			},
+		)(
+			orchestrator.NewFeature("api").
+				WithDependencies("database"),
+		).
+			WithLifetime(orchestrator.Singleton).
 			WithComponent(
 				orchestrator.NewComponent().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						api, err := orchestrator.ResolveType[APIService](container)
-						if err != nil {
-							return err
-						}
+					WithStart(orchestrator.WithStartFunc[APIService](func(api APIService) error {
 						return api.Start()
-					}).
-					WithStop(func(ctx context.Context) error {
-						api, err := orchestrator.ResolveType[APIService](app.Container())
-						if err != nil {
-							return err
-						}
+					})).
+					WithStop(orchestrator.WithStopFuncWithApp[APIService](app, func(api APIService) error {
 						return api.Stop()
-					}).
-					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
-						api, err := orchestrator.ResolveType[APIService](app.Container())
-						if err != nil {
-							return orchestrator.HealthStatus{
-								Status:  "unhealthy",
-								Message: "Failed to resolve API service",
-							}
-						}
+					})).
+					WithHealth(orchestrator.WithHealthFunc[APIService](app, func(api APIService) orchestrator.HealthStatus {
 						return orchestrator.HealthStatus{
 							Status:  api.Health(),
 							Message: "API server is running",
 						}
-					}),
+					})),
 			),
 	)
 

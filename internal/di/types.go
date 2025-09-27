@@ -99,6 +99,7 @@ type ServiceOptions struct {
 	Metadata     map[string]interface{}
 	RetryConfig  *RetryConfig
 	Lifetime     ServiceLifetime
+	LifetimeSet  bool // Track if lifetime was explicitly set
 }
 
 // Option represents a service registration option
@@ -115,6 +116,7 @@ func WithName(name string) Option {
 func WithLifetime(lifetime ServiceLifetime) Option {
 	return func(o *ServiceOptions) {
 		o.Lifetime = lifetime
+		o.LifetimeSet = true
 	}
 }
 

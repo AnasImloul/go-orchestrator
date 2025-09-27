@@ -10,6 +10,22 @@ import (
 	"github.com/AnasImloul/go-orchestrator/internal/logger"
 )
 
+// Context key for scope
+type scopeKey struct{}
+
+// WithScope adds a scope to the context
+func WithScope(ctx context.Context, scope Scope) context.Context {
+	return context.WithValue(ctx, scopeKey{}, scope)
+}
+
+// GetScopeFromContext retrieves a scope from the context
+func GetScopeFromContext(ctx context.Context) Scope {
+	if scope, ok := ctx.Value(scopeKey{}).(Scope); ok {
+		return scope
+	}
+	return nil
+}
+
 // DefaultContainer implements the Container interface
 type DefaultContainer struct {
 	registrations map[reflect.Type]*ServiceRegistration
@@ -49,7 +65,7 @@ func (c *DefaultContainer) Register(serviceType reflect.Type, factory Factory, o
 
 	// Use lifetime from options if provided, otherwise use default
 	lifetime := c.config.DefaultLifetime
-	if opts.Lifetime != 0 {
+	if opts.LifetimeSet {
 		lifetime = opts.Lifetime
 	}
 	
@@ -321,12 +337,7 @@ func (c *DefaultContainer) resolve(ctx context.Context, serviceType reflect.Type
 	if !exists {
 		return nil, fmt.Errorf("service of type %s is not registered", serviceType.String())
 	}
-
-	// Handle instance registration
-	if registration.Instance != nil {
-		success = true
-		return registration.Instance, nil
-	}
+	
 
 	// Handle different lifetimes
 	switch registration.Lifetime {
@@ -358,9 +369,16 @@ func (c *DefaultContainer) resolve(ctx context.Context, serviceType reflect.Type
 		return instance, nil
 		
 	case Scoped:
-		// For now, scoped behaves like transient since we don't have proper scope management
-		// TODO: Implement proper scope management
-		instance, err := c.createInstance(ctx, registration, depth)
+		// For scoped services, we need to resolve from a scope
+		// If no scope is provided in context, create a default scope
+		scope := GetScopeFromContext(ctx)
+		if scope == nil {
+			// Create a temporary scope for this resolution
+			scope = NewScope(c, c.logger)
+			defer scope.Dispose()
+		}
+		
+		instance, err := scope.Resolve(serviceType)
 		if err != nil {
 			return nil, err
 		}

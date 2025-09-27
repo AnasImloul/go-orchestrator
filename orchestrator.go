@@ -101,10 +101,10 @@ type Feature struct {
 
 // ServiceConfig represents a service registration configuration.
 type ServiceConfig struct {
-	Type      reflect.Type
-	Factory   func(ctx context.Context, container *Container) (interface{}, error)
-	Instance  interface{}
-	Lifetime  Lifetime
+	Name     string
+	Type     reflect.Type
+	Factory  func(ctx context.Context, container *Container) (interface{}, error)
+	Lifetime Lifetime
 }
 
 // Lifetime represents the service lifetime.
@@ -171,6 +171,7 @@ type HealthStatus struct {
 // Container provides a simplified interface to the DI container.
 type Container struct {
 	container di.Container
+	scope     di.Scope
 }
 
 // Register registers a service with the container.
@@ -194,14 +195,53 @@ func (c *Container) Register(serviceType reflect.Type, factory func(ctx context.
 	}, di.WithLifetime(internalLifetime))
 }
 
+// RegisterNamed registers a named service with the container.
+func (c *Container) RegisterNamed(name string, serviceType reflect.Type, factory func(ctx context.Context, container *Container) (interface{}, error), lifetime Lifetime) error {
+	// Convert public Lifetime to internal ServiceLifetime
+	var internalLifetime di.ServiceLifetime
+	switch lifetime {
+	case Transient:
+		internalLifetime = di.Transient
+	case Scoped:
+		internalLifetime = di.Scoped
+	case Singleton:
+		internalLifetime = di.Singleton
+	default:
+		internalLifetime = di.Singleton
+	}
+	
+	// Register with the internal container using the proper lifetime and name
+	return c.container.Register(serviceType, func(ctx context.Context, cont di.Container) (interface{}, error) {
+		return factory(ctx, c)
+	}, di.WithLifetime(internalLifetime), di.WithName(name))
+}
+
 // RegisterInstance registers a service instance.
 func (c *Container) RegisterInstance(serviceType reflect.Type, instance interface{}) error {
 	return c.container.RegisterInstance(serviceType, instance)
 }
 
+// RegisterNamedInstance registers a named service instance.
+func (c *Container) RegisterNamedInstance(name string, serviceType reflect.Type, instance interface{}) error {
+	return c.container.Register(serviceType, func(ctx context.Context, cont di.Container) (interface{}, error) {
+		return instance, nil
+	}, di.WithName(name), di.WithLifetime(di.Singleton))
+}
+
 // Resolve resolves a service from the container.
 func (c *Container) Resolve(serviceType reflect.Type) (interface{}, error) {
+	if c.scope != nil {
+		return c.scope.Resolve(serviceType)
+	}
 	return c.container.Resolve(serviceType)
+}
+
+// ResolveByName resolves a service by name from the container.
+func (c *Container) ResolveByName(name string) (interface{}, error) {
+	if c.scope != nil {
+		return c.scope.ResolveByName(name)
+	}
+	return c.container.ResolveByName(name)
 }
 
 // ResolveType resolves a service by interface type.
@@ -215,11 +255,64 @@ func ResolveType[T any](c *Container) (T, error) {
 		return zero, fmt.Errorf("ResolveType[T] requires T to be an interface type, got %s", serviceType.Kind())
 	}
 	
-	instance, err := c.container.Resolve(serviceType)
+	instance, err := c.Resolve(serviceType)
 	if err != nil {
 		return zero, err
 	}
 	return instance.(T), nil
+}
+
+// ResolveNamedType resolves a named service by interface type.
+// T must be an interface type, not a concrete struct.
+func ResolveNamedType[T any](c *Container, name string) (T, error) {
+	var zero T
+	serviceType := reflect.TypeOf((*T)(nil)).Elem()
+	
+	// Enforce that T is an interface type
+	if serviceType.Kind() != reflect.Interface {
+		return zero, fmt.Errorf("ResolveNamedType[T] requires T to be an interface type, got %s", serviceType.Kind())
+	}
+	
+	instance, err := c.ResolveByName(name)
+	if err != nil {
+		return zero, err
+	}
+	
+	return instance.(T), nil
+}
+
+// Component helpers for common patterns
+func WithStartFunc[T any](fn func(T) error) func(context.Context, *Container) error {
+	return func(ctx context.Context, container *Container) error {
+		service, err := ResolveType[T](container)
+		if err != nil {
+			return err
+		}
+		return fn(service)
+	}
+}
+
+func WithStopFuncWithApp[T any](app *App, fn func(T) error) func(context.Context) error {
+	return func(ctx context.Context) error {
+		service, err := ResolveType[T](app.Container())
+		if err != nil {
+			return err
+		}
+		return fn(service)
+	}
+}
+
+func WithHealthFunc[T any](app *App, fn func(T) HealthStatus) func(context.Context) HealthStatus {
+	return func(ctx context.Context) HealthStatus {
+		service, err := ResolveType[T](app.Container())
+		if err != nil {
+			return HealthStatus{
+				Status:  "unhealthy",
+				Message: "Failed to resolve service",
+			}
+		}
+		return fn(service)
+	}
 }
 
 // MustResolveType resolves a service by interface type, panicking on error.
@@ -256,33 +349,21 @@ func (a *App) Start(ctx context.Context) error {
 	container := a.Container()
 	for _, feature := range a.features {
 		for _, service := range feature.Services {
+			// All services now use factories for consistent behavior
 			if service.Factory != nil {
-				if err := container.Register(service.Type, service.Factory, service.Lifetime); err != nil {
-					return fmt.Errorf("failed to register service %s: %w", service.Type.String(), err)
-				}
-			} else if service.Instance != nil {
-				// For non-singleton lifetimes, create a factory that returns the instance
-				// For singleton, we can use RegisterInstance directly
-				if service.Lifetime == Singleton {
-					if err := container.RegisterInstance(service.Type, service.Instance); err != nil {
-						return fmt.Errorf("failed to register service instance %s: %w", service.Type.String(), err)
+				if service.Name != "" {
+					// Register named service
+					if err := container.RegisterNamed(service.Name, service.Type, service.Factory, service.Lifetime); err != nil {
+						return fmt.Errorf("failed to register named service %s (%s): %w", service.Name, service.Type.String(), err)
 					}
 				} else {
-					// For Transient and Scoped, create a factory that returns new instances
-					originalInstance := service.Instance
-					factory := func(ctx context.Context, container *Container) (interface{}, error) {
-						if service.Lifetime == Transient {
-							// For Transient, create a new instance by cloning the original
-							return cloneInstance(originalInstance), nil
-						} else {
-							// For Scoped, return the same instance (for now, until proper scoping is implemented)
-							return originalInstance, nil
-						}
-					}
-					if err := container.Register(service.Type, factory, service.Lifetime); err != nil {
-						return fmt.Errorf("failed to register service factory %s: %w", service.Type.String(), err)
+					// Register unnamed service
+					if err := container.Register(service.Type, service.Factory, service.Lifetime); err != nil {
+						return fmt.Errorf("failed to register service %s: %w", service.Type.String(), err)
 					}
 				}
+			} else {
+				return fmt.Errorf("service %s has no factory - all services must use factory-based registration", service.Type.String())
 			}
 		}
 	}
@@ -334,6 +415,23 @@ func (a *App) Health(ctx context.Context) map[string]HealthStatus {
 // Container returns the DI container.
 func (a *App) Container() *Container {
 	return &Container{container: a.container}
+}
+
+// CreateScope creates a new scope for the container.
+func (c *Container) CreateScope() *Container {
+	scope := c.container.CreateScope()
+	return &Container{
+		container: c.container,
+		scope:     scope,
+	}
+}
+
+// Dispose disposes the scope if one exists.
+func (c *Container) Dispose() error {
+	if c.scope != nil {
+		return c.scope.Dispose()
+	}
+	return nil
 }
 
 // featureComponent wraps a feature as a lifecycle component.
@@ -408,36 +506,20 @@ func (f *Feature) WithDependencies(deps ...string) *Feature {
 	return f
 }
 
-
-// WithService adds a service to the feature.
-func (f *Feature) WithService(serviceType reflect.Type, factory func(ctx context.Context, container *Container) (interface{}, error), lifetime Lifetime) *Feature {
-	f.Services = append(f.Services, ServiceConfig{
-		Type:     serviceType,
-		Factory:  factory,
-		Lifetime: lifetime,
-	})
-	return f
-}
-
-// WithServiceInstance adds a service instance to the feature.
-func (f *Feature) WithServiceInstance(serviceType reflect.Type, instance interface{}) *Feature {
-	f.Services = append(f.Services, ServiceConfig{
-		Type:     serviceType,
-		Instance: instance,
-		Lifetime: Singleton,
-	})
+// WithLifetime sets the lifetime for the last registered service.
+func (f *Feature) WithLifetime(lifetime Lifetime) *Feature {
+	if len(f.Services) == 0 {
+		panic("WithLifetime must be called after WithService")
+	}
+	// Update the lifetime of the last registered service
+	f.Services[len(f.Services)-1].Lifetime = lifetime
 	return f
 }
 
 
-// WithServiceInstanceT is a helper function that creates a feature with a service instance using generics.
-func WithServiceInstanceT[T any](name string, instance interface{}, lifetime Lifetime) *Feature {
-	return WithServiceInstanceGeneric[T](instance, lifetime)(NewFeature(name))
-}
-
-// WithServiceInstanceGeneric adds a service instance to the feature using generics.
+// WithService adds a service to the feature using generics.
 // T must be an interface type that the instance implements.
-func WithServiceInstanceGeneric[T any](instance interface{}, lifetime Lifetime) func(*Feature) *Feature {
+func WithService[T any](instance interface{}) func(*Feature) *Feature {
 	return func(f *Feature) *Feature {
 		serviceType := reflect.TypeOf((*T)(nil)).Elem()
 		
@@ -446,14 +528,59 @@ func WithServiceInstanceGeneric[T any](instance interface{}, lifetime Lifetime) 
 			panic(fmt.Sprintf("instance of type %T does not implement interface %s", instance, serviceType.String()))
 		}
 		
+		// Create a factory that creates new instances
+		originalInstance := instance
+		factory := func(ctx context.Context, container *Container) (interface{}, error) {
+			// Always create a new instance by cloning the original
+			// The DI container will handle lifetime management (singleton caching, etc.)
+			return cloneInstance(originalInstance), nil
+		}
+		
 		f.Services = append(f.Services, ServiceConfig{
 			Type:     serviceType,
-			Instance: instance,
-			Lifetime: lifetime,
+			Factory:  factory,
+			Lifetime: Singleton, // Default to Singleton, can be overridden with WithLifetime
 		})
 		return f
 	}
 }
+
+// WithServiceFactory adds a service factory to the feature using generics.
+// T must be an interface type that the factory returns.
+func WithServiceFactory[T any](factory func(ctx context.Context, container *Container) (T, error)) func(*Feature) *Feature {
+	return func(f *Feature) *Feature {
+		serviceType := reflect.TypeOf((*T)(nil)).Elem()
+		
+		// Create a wrapper factory that returns interface{}
+		wrapperFactory := func(ctx context.Context, container *Container) (interface{}, error) {
+			result, err := factory(ctx, container)
+			if err != nil {
+				return nil, err
+			}
+			return result, nil
+		}
+		
+		f.Services = append(f.Services, ServiceConfig{
+			Type:     serviceType,
+			Factory:  wrapperFactory,
+			Lifetime: Singleton, // Default to Singleton, can be overridden with WithLifetime
+		})
+		return f
+	}
+}
+
+// WithNamedService adds a named service to the feature.
+func (f *Feature) WithNamedService(name string, serviceType reflect.Type, factory func(ctx context.Context, container *Container) (interface{}, error), lifetime Lifetime) *Feature {
+	f.Services = append(f.Services, ServiceConfig{
+		Name:     name,
+		Type:     serviceType,
+		Factory:  factory,
+		Lifetime: lifetime,
+	})
+	return f
+}
+
+
 
 // WithComponent sets the component configuration for the feature using a builder.
 func (f *Feature) WithComponent(builder *ComponentBuilder) *Feature {
@@ -473,7 +600,7 @@ func (f *Feature) WithMetadata(key, value string) *Feature {
 	return f
 }
 
-// cloneInstance creates a shallow copy of an instance using reflection
+// cloneInstance creates a deep copy of an instance using reflection
 func cloneInstance(original interface{}) interface{} {
 	if original == nil {
 		return nil
@@ -484,10 +611,13 @@ func cloneInstance(original interface{}) interface{} {
 	
 	// Handle pointers
 	if originalType.Kind() == reflect.Ptr {
+		if originalValue.IsNil() {
+			return reflect.New(originalType.Elem()).Interface()
+		}
 		// Create a new pointer to the same type
 		newPtr := reflect.New(originalType.Elem())
-		// Copy the value that the original pointer points to
-		newPtr.Elem().Set(originalValue.Elem())
+		// Recursively copy the value that the original pointer points to
+		newPtr.Elem().Set(reflect.ValueOf(cloneInstance(originalValue.Elem().Interface())))
 		return newPtr.Interface()
 	}
 	
@@ -495,15 +625,59 @@ func cloneInstance(original interface{}) interface{} {
 	if originalType.Kind() == reflect.Struct {
 		// Create a new struct of the same type
 		newStruct := reflect.New(originalType)
-		// Copy all fields
+		// Copy all fields recursively
 		for i := 0; i < originalValue.NumField(); i++ {
 			if newStruct.Elem().Field(i).CanSet() {
-				newStruct.Elem().Field(i).Set(originalValue.Field(i))
+				fieldValue := originalValue.Field(i)
+				if fieldValue.CanInterface() {
+					clonedField := cloneInstance(fieldValue.Interface())
+					newStruct.Elem().Field(i).Set(reflect.ValueOf(clonedField))
+				} else {
+					newStruct.Elem().Field(i).Set(fieldValue)
+				}
 			}
 		}
 		return newStruct.Elem().Interface()
 	}
 	
-	// For other types, return a copy if possible
+	// Handle slices
+	if originalType.Kind() == reflect.Slice {
+		if originalValue.IsNil() {
+			return reflect.MakeSlice(originalType, 0, 0).Interface()
+		}
+		newSlice := reflect.MakeSlice(originalType, originalValue.Len(), originalValue.Cap())
+		for i := 0; i < originalValue.Len(); i++ {
+			clonedElement := cloneInstance(originalValue.Index(i).Interface())
+			newSlice.Index(i).Set(reflect.ValueOf(clonedElement))
+		}
+		return newSlice.Interface()
+	}
+	
+	// Handle maps
+	if originalType.Kind() == reflect.Map {
+		if originalValue.IsNil() {
+			return reflect.MakeMap(originalType).Interface()
+		}
+		newMap := reflect.MakeMap(originalType)
+		for _, key := range originalValue.MapKeys() {
+			clonedKey := cloneInstance(key.Interface())
+			clonedValue := cloneInstance(originalValue.MapIndex(key).Interface())
+			newMap.SetMapIndex(reflect.ValueOf(clonedKey), reflect.ValueOf(clonedValue))
+		}
+		return newMap.Interface()
+	}
+	
+	// Handle arrays
+	if originalType.Kind() == reflect.Array {
+		newArray := reflect.New(originalType).Elem()
+		for i := 0; i < originalValue.Len(); i++ {
+			clonedElement := cloneInstance(originalValue.Index(i).Interface())
+			newArray.Index(i).Set(reflect.ValueOf(clonedElement))
+		}
+		return newArray.Interface()
+	}
+	
+	// For primitive types (int, string, bool, etc.), return the value directly
+	// These are already copied by value in Go
 	return original
 }

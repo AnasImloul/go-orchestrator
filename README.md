@@ -195,6 +195,118 @@ app.AddFeature(
 
 This provides significant performance improvements over sequential startup.
 
+## Service Lifetimes
+
+The library supports three service lifetimes:
+
+- **Singleton**: One instance for the entire application lifecycle
+- **Scoped**: One instance per scope (request/operation) - requires proper scope management
+- **Transient**: New instance created every time the service is resolved
+
+### Lifetime Behavior
+
+- **Singleton**: Same instance returned every time, shared across the entire application
+- **Scoped**: Same instance within a scope, different instances across scopes
+- **Transient**: New instance created for each resolution, even within the same scope
+
+### Service Registration Methods
+
+#### Service Registration (Clean API)
+```go
+// Register a service with clean, declarative API
+app.AddFeature(
+    orchestrator.WithService[DatabaseService](&databaseService{host: "localhost", port: 5432})(
+        orchestrator.NewFeature("database"),
+    ).
+        WithLifetime(orchestrator.Singleton).
+        WithComponent(
+            orchestrator.NewComponent().
+                WithStart(orchestrator.WithStartFunc[DatabaseService](func(db DatabaseService) error {
+                    return db.Connect()
+                })).
+                WithStop(orchestrator.WithStopFuncWithApp[DatabaseService](app, func(db DatabaseService) error {
+                    return db.Disconnect()
+                })),
+        ),
+)
+```
+
+#### Factory Registration (For Complex Dependencies)
+```go
+// Register a service factory for services with dependencies
+app.AddFeature(
+    orchestrator.WithServiceFactory[APIService](
+        func(ctx context.Context, container *orchestrator.Container) (APIService, error) {
+            db, err := orchestrator.ResolveType[DatabaseService](container)
+            if err != nil {
+                return nil, err
+            }
+            return &apiService{port: 8080, db: db}, nil
+        },
+    )(
+        orchestrator.NewFeature("api").
+            WithDependencies("database"),
+    ).
+        WithLifetime(orchestrator.Singleton),
+)
+```
+
+**When to use each approach:**
+- **`WithService[T]()`**: For simple services without dependencies (clean, declarative)
+- **`WithServiceFactory[T]()`**: For services with dependencies that need to be resolved from the container (type-safe, generic)
+
+**Helper Functions for Reduced Verbosity:**
+- **`WithStartFunc[T]()`**: Eliminates repetitive service resolution in start methods
+- **`WithStopFuncWithApp[T]()`**: Eliminates repetitive service resolution in stop methods  
+- **`WithHealthFunc[T]()`**: Eliminates repetitive service resolution in health methods
+
+#### Named Services
+```go
+// Register multiple services with the same interface type using names
+app.AddFeature(
+    orchestrator.NewFeature("databases").
+        WithNamedService(
+            "primary-db",
+            reflect.TypeOf((*DatabaseService)(nil)).Elem(),
+            func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {
+                return &databaseService{host: "primary", port: 5432}, nil
+            },
+            orchestrator.Singleton,
+        ).
+        WithNamedService(
+            "secondary-db",
+            reflect.TypeOf((*DatabaseService)(nil)).Elem(),
+            func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {
+                return &databaseService{host: "secondary", port: 5433}, nil
+            },
+            orchestrator.Singleton,
+        ),
+)
+
+// Resolve named services
+primaryDB, _ := orchestrator.ResolveNamedType[DatabaseService](container, "primary-db")
+secondaryDB, _ := orchestrator.ResolveNamedType[DatabaseService](container, "secondary-db")
+```
+
+### Scope Management
+
+```go
+// Create a scope for scoped services
+scopedContainer := container.CreateScope()
+defer scopedContainer.Dispose()
+
+// Resolve services within the scope
+service, _ := orchestrator.ResolveType[MyService](scopedContainer)
+```
+
+### Limitations and Best Practices
+
+1. **Type Collision**: You cannot register multiple services with the same interface type without using named services
+2. **Transient Cloning**: Transient services use deep cloning for instance registration, which may not work for all types
+3. **Factory Registration**: Use factory registration for better control over service creation and lifetime behavior
+4. **Scope Lifecycle**: Always dispose scopes when done to prevent memory leaks
+5. **Interface Enforcement**: The library enforces that services are resolved as interfaces, not concrete types
+
 ## Using as External Dependency
 
 ### 1. Install the Library
@@ -268,11 +380,27 @@ For complete examples, see the [usage documentation](docs/usage.md), [external u
 
 ### Basic Example
 
-See `examples/basic/main.go` for a simple usage example.
+See `examples/simple/main.go` for a simple declarative usage example.
+
+### Clean API Example
+
+See `examples/clean-api/main.go` for a demonstration of the new clean, declarative API with proper service lifetimes.
 
 ### Advanced Example
 
 See `examples/advanced/main.go` for a complex orchestration example with multiple dependent services.
+
+### Service Lifetimes Example
+
+See `examples/lifetimes/main.go` for a demonstration of different service lifetimes (Singleton, Scoped, Transient).
+
+### Factory-Based Registration Example
+
+See `examples/factory-based/main.go` for examples of factory-based registration and named services.
+
+### Named Services Example
+
+See `examples/named-services/main.go` for examples of multiple services with the same interface type.
 
 ### External Usage Example
 
@@ -281,11 +409,23 @@ See `examples/external-usage/main.go` for a complete example showing how to use 
 ### Running Examples
 
 ```bash
-# Run the basic example
-go run examples/basic/main.go
+# Run the simple example
+go run examples/simple/main.go
+
+# Run the clean API example
+go run examples/clean-api/main.go
 
 # Run the advanced example
 go run examples/advanced/main.go
+
+# Run the service lifetimes example
+go run examples/lifetimes/main.go
+
+# Run the factory-based registration example
+go run examples/factory-based/main.go
+
+# Run the named services example
+go run examples/named-services/main.go
 
 # Run the external usage example
 cd examples/external-usage
