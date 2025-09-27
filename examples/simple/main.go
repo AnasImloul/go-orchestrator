@@ -29,31 +29,10 @@ func (d *DatabaseService) Disconnect() error {
 	return nil
 }
 
-// CacheService represents a cache service
-type CacheService struct {
-	host string
-	port int
-}
-
-func (c *CacheService) Connect() error {
-	fmt.Printf("Connecting to cache at %s:%d\n", c.host, c.port)
-	time.Sleep(50 * time.Millisecond)
-	fmt.Println("Cache connected successfully")
-	return nil
-}
-
-func (c *CacheService) Disconnect() error {
-	fmt.Println("Disconnecting from cache")
-	time.Sleep(25 * time.Millisecond)
-	fmt.Println("Cache disconnected")
-	return nil
-}
-
 // APIService represents an API service
 type APIService struct {
 	port int
 	db   *DatabaseService
-	cache *CacheService
 }
 
 func (a *APIService) Start() error {
@@ -75,8 +54,8 @@ func (a *APIService) Health() string {
 }
 
 func main() {
-	fmt.Println("Go Orchestrator - External Usage Example")
-	fmt.Println("========================================")
+	fmt.Println("Go Orchestrator - Simple Declarative Example")
+	fmt.Println("=============================================")
 
 	// Create application with default configuration
 	app := orchestrator.New()
@@ -113,43 +92,11 @@ func main() {
 			),
 	)
 
-	// Add cache feature
-	app.AddFeature(
-		orchestrator.NewFeature("cache").
-			WithPriority(15). // Start after database
-			WithServiceInstance(
-				reflect.TypeOf((*CacheService)(nil)),
-				&CacheService{host: "localhost", port: 6379},
-			).
-			WithComponent(
-				func(ctx context.Context, container *orchestrator.Container) error {
-					cache, err := orchestrator.ResolveType[*CacheService](container)
-					if err != nil {
-						return err
-					}
-					return cache.Connect()
-				},
-				func(ctx context.Context) error {
-					cache, err := orchestrator.ResolveType[*CacheService](app.Container())
-					if err != nil {
-						return err
-					}
-					return cache.Disconnect()
-				},
-				func(ctx context.Context) orchestrator.HealthStatus {
-					return orchestrator.HealthStatus{
-						Status:  "healthy",
-						Message: "Cache is connected",
-					}
-				},
-			),
-	)
-
-	// Add API feature that depends on both database and cache
+	// Add API feature that depends on database
 	app.AddFeature(
 		orchestrator.NewFeature("api").
-			WithDependencies("database", "cache").
-			WithPriority(20). // Start after database and cache
+			WithDependencies("database").
+			WithPriority(20). // Start after database
 			WithService(
 				reflect.TypeOf((*APIService)(nil)),
 				func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {
@@ -157,11 +104,7 @@ func main() {
 					if err != nil {
 						return nil, err
 					}
-					cache, err := orchestrator.ResolveType[*CacheService](container)
-					if err != nil {
-						return nil, err
-					}
-					return &APIService{port: 8080, db: db, cache: cache}, nil
+					return &APIService{port: 8080, db: db}, nil
 				},
 				orchestrator.Singleton,
 			).

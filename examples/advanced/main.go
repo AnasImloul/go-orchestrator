@@ -3,425 +3,306 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
+	"reflect"
 	"time"
 
-	"github.com/AnasImloul/go-orchestrator/pkg/di"
-	"github.com/AnasImloul/go-orchestrator/pkg/lifecycle"
-	"github.com/AnasImloul/go-orchestrator/pkg/logger"
-	"github.com/AnasImloul/go-orchestrator/pkg/orchestrator"
+	"github.com/AnasImloul/go-orchestrator"
 )
 
-// AdvancedExample demonstrates complex orchestration with dependencies
+// DatabaseService represents a database service
+type DatabaseService struct {
+	host string
+	port int
+}
+
+func (d *DatabaseService) Connect() error {
+	fmt.Printf("Connecting to database at %s:%d\n", d.host, d.port)
+	time.Sleep(200 * time.Millisecond)
+	fmt.Println("Database connected successfully")
+	return nil
+}
+
+func (d *DatabaseService) Disconnect() error {
+	fmt.Println("Disconnecting from database")
+	time.Sleep(100 * time.Millisecond)
+	fmt.Println("Database disconnected")
+	return nil
+}
+
+// CacheService represents a cache service
+type CacheService struct {
+	host string
+	port int
+}
+
+func (c *CacheService) Connect() error {
+	fmt.Printf("Connecting to cache at %s:%d\n", c.host, c.port)
+	time.Sleep(100 * time.Millisecond)
+	fmt.Println("Cache connected successfully")
+	return nil
+}
+
+func (c *CacheService) Disconnect() error {
+	fmt.Println("Disconnecting from cache")
+	time.Sleep(50 * time.Millisecond)
+	fmt.Println("Cache disconnected")
+	return nil
+}
+
+// APIService represents an API service
+type APIService struct {
+	port  int
+	db    *DatabaseService
+	cache *CacheService
+}
+
+func (a *APIService) Start() error {
+	fmt.Printf("Starting API server on port %d\n", a.port)
+	time.Sleep(150 * time.Millisecond)
+	fmt.Println("API server started successfully")
+	return nil
+}
+
+func (a *APIService) Stop() error {
+	fmt.Println("Stopping API server")
+	time.Sleep(75 * time.Millisecond)
+	fmt.Println("API server stopped")
+	return nil
+}
+
+func (a *APIService) Health() string {
+	return "healthy"
+}
+
+// WorkerService represents a background worker service
+type WorkerService struct {
+	db    *DatabaseService
+	cache *CacheService
+}
+
+func (w *WorkerService) Start() error {
+	fmt.Println("Starting background worker")
+	time.Sleep(100 * time.Millisecond)
+	fmt.Println("Background worker started")
+	return nil
+}
+
+func (w *WorkerService) Stop() error {
+	fmt.Println("Stopping background worker")
+	time.Sleep(50 * time.Millisecond)
+	fmt.Println("Background worker stopped")
+	return nil
+}
+
+func (w *WorkerService) Health() string {
+	return "healthy"
+}
+
 func main() {
-	// Create a structured logger
-	slogLogger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
+	fmt.Println("Go Orchestrator - Advanced Example")
+	fmt.Println("==================================")
 
-	// Create logger adapter
-	logger := logger.NewSlogAdapter(slogLogger)
+	// Create application with default configuration
+	app := orchestrator.New()
 
-	// Create orchestrator with custom configuration (not used in simple example)
-	_ = orchestrator.OrchestratorConfig{
-		StartupTimeout:      15 * time.Second,
-		ShutdownTimeout:     10 * time.Second,
-		HealthCheckInterval: 30 * time.Second,
-		EnableMetrics:       true,
-		EnableTracing:       true,
-		FeatureConfig: map[string]interface{}{
-			"database": map[string]interface{}{
-				"host":     "localhost",
-				"port":     5432,
-				"database": "myapp",
-			},
-			"cache": map[string]interface{}{
-				"host": "localhost",
-				"port": 6379,
-			},
-		},
-	}
+	// Add database feature
+	app.AddFeature(
+		orchestrator.NewFeature("database").
+			WithPriority(10). // Start first
+			WithServiceInstance(
+				reflect.TypeOf((*DatabaseService)(nil)),
+				&DatabaseService{host: "localhost", port: 5432},
+			).
+			WithComponent(
+				func(ctx context.Context, container *orchestrator.Container) error {
+					db, err := orchestrator.ResolveType[*DatabaseService](container)
+					if err != nil {
+						return err
+					}
+					return db.Connect()
+				},
+				func(ctx context.Context) error {
+					db, err := orchestrator.ResolveType[*DatabaseService](app.Container())
+					if err != nil {
+						return err
+					}
+					return db.Disconnect()
+				},
+				func(ctx context.Context) orchestrator.HealthStatus {
+					return orchestrator.HealthStatus{
+						Status:  "healthy",
+						Message: "Database is connected",
+					}
+				},
+			),
+	)
 
-	orch, err := orchestrator.NewOrchestrator()
-	if err != nil {
-		fmt.Printf("Failed to create orchestrator: %v\n", err)
-		os.Exit(1)
-	}
+	// Add cache feature
+	app.AddFeature(
+		orchestrator.NewFeature("cache").
+			WithPriority(15). // Start after database
+			WithServiceInstance(
+				reflect.TypeOf((*CacheService)(nil)),
+				&CacheService{host: "localhost", port: 6379},
+			).
+			WithComponent(
+				func(ctx context.Context, container *orchestrator.Container) error {
+					cache, err := orchestrator.ResolveType[*CacheService](container)
+					if err != nil {
+						return err
+					}
+					return cache.Connect()
+				},
+				func(ctx context.Context) error {
+					cache, err := orchestrator.ResolveType[*CacheService](app.Container())
+					if err != nil {
+						return err
+					}
+					return cache.Disconnect()
+				},
+				func(ctx context.Context) orchestrator.HealthStatus {
+					return orchestrator.HealthStatus{
+						Status:  "healthy",
+						Message: "Cache is connected",
+					}
+				},
+			),
+	)
 
-	// Register features with dependencies
-	features := []orchestrator.Feature{
-		&DatabaseFeature{name: "database", priority: 10},
-		&CacheFeature{name: "cache", priority: 20},
-		&APIFeature{name: "api-server", priority: 30},
-		&WorkerFeature{name: "background-worker", priority: 40},
-	}
+	// Add API feature that depends on both database and cache
+	app.AddFeature(
+		orchestrator.NewFeature("api").
+			WithDependencies("database", "cache").
+			WithPriority(20). // Start after database and cache
+			WithService(
+				reflect.TypeOf((*APIService)(nil)),
+				func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {
+					db, err := orchestrator.ResolveType[*DatabaseService](container)
+					if err != nil {
+						return nil, err
+					}
+					cache, err := orchestrator.ResolveType[*CacheService](container)
+					if err != nil {
+						return nil, err
+					}
+					return &APIService{port: 8080, db: db, cache: cache}, nil
+				},
+				orchestrator.Singleton,
+			).
+			WithComponent(
+				func(ctx context.Context, container *orchestrator.Container) error {
+					api, err := orchestrator.ResolveType[*APIService](container)
+					if err != nil {
+						return err
+					}
+					return api.Start()
+				},
+				func(ctx context.Context) error {
+					api, err := orchestrator.ResolveType[*APIService](app.Container())
+					if err != nil {
+						return err
+					}
+					return api.Stop()
+				},
+				func(ctx context.Context) orchestrator.HealthStatus {
+					api, err := orchestrator.ResolveType[*APIService](app.Container())
+					if err != nil {
+						return orchestrator.HealthStatus{
+							Status:  "unhealthy",
+							Message: "Failed to resolve API service",
+						}
+					}
+					return orchestrator.HealthStatus{
+						Status:  api.Health(),
+						Message: "API server is running",
+					}
+				},
+			),
+	)
 
-	for _, feature := range features {
-		if err := orch.RegisterFeature(feature); err != nil {
-			fmt.Printf("Failed to register feature %s: %v\n", feature.GetName(), err)
-			os.Exit(1)
-		}
-	}
+	// Add worker feature that depends on database and cache
+	app.AddFeature(
+		orchestrator.NewFeature("worker").
+			WithDependencies("database", "cache").
+			WithPriority(25). // Start after API
+			WithService(
+				reflect.TypeOf((*WorkerService)(nil)),
+				func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {
+					db, err := orchestrator.ResolveType[*DatabaseService](container)
+					if err != nil {
+						return nil, err
+					}
+					cache, err := orchestrator.ResolveType[*CacheService](container)
+					if err != nil {
+						return nil, err
+					}
+					return &WorkerService{db: db, cache: cache}, nil
+				},
+				orchestrator.Singleton,
+			).
+			WithComponent(
+				func(ctx context.Context, container *orchestrator.Container) error {
+					worker, err := orchestrator.ResolveType[*WorkerService](container)
+					if err != nil {
+						return err
+					}
+					return worker.Start()
+				},
+				func(ctx context.Context) error {
+					worker, err := orchestrator.ResolveType[*WorkerService](app.Container())
+					if err != nil {
+						return err
+					}
+					return worker.Stop()
+				},
+				func(ctx context.Context) orchestrator.HealthStatus {
+					worker, err := orchestrator.ResolveType[*WorkerService](app.Container())
+					if err != nil {
+						return orchestrator.HealthStatus{
+							Status:  "unhealthy",
+							Message: "Failed to resolve worker service",
+						}
+					}
+					return orchestrator.HealthStatus{
+						Status:  worker.Health(),
+						Message: "Worker is running",
+					}
+				},
+			),
+	)
 
 	// Start the application
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	logger.Info("Starting application with advanced orchestration")
-	if err := orch.Start(ctx); err != nil {
-		fmt.Printf("Failed to start: %v\n", err)
-		os.Exit(1)
+	fmt.Println("Starting application...")
+	if err := app.Start(ctx); err != nil {
+		fmt.Printf("Failed to start application: %v\n", err)
+		return
 	}
 
-	logger.Info("Application started successfully")
+	fmt.Println("Application started successfully!")
 
-	// Simulate running the application
+	// Check health
+	fmt.Println("Checking application health...")
+	health := app.Health(ctx)
+	for name, status := range health {
+		fmt.Printf("  %s: %s - %s\n", name, status.Status, status.Message)
+	}
+
+	// Run for a bit
+	fmt.Println("Running for 3 seconds...")
 	time.Sleep(3 * time.Second)
 
-	// Perform health checks
-	logger.Info("Performing health check")
-	healthReport := orch.HealthCheck(ctx)
-	logger.Info("Health check completed", "report", healthReport)
-
-	// Stop gracefully
-	logger.Info("Initiating graceful shutdown")
+	// Stop the application
+	fmt.Println("Stopping application...")
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer stopCancel()
 
-	if err := orch.Stop(stopCtx); err != nil {
-		fmt.Printf("Failed to stop: %v\n", err)
-		os.Exit(1)
+	if err := app.Stop(stopCtx); err != nil {
+		fmt.Printf("Failed to stop application: %v\n", err)
+		return
 	}
 
-	logger.Info("Application stopped successfully")
-}
-
-// DatabaseFeature represents a database service
-type DatabaseFeature struct {
-	name     string
-	priority int
-}
-
-func (f *DatabaseFeature) GetName() string {
-	return f.name
-}
-
-func (f *DatabaseFeature) GetDependencies() []string {
-	return []string{} // No dependencies
-}
-
-func (f *DatabaseFeature) GetPriority() int {
-	return f.priority
-}
-
-func (f *DatabaseFeature) RegisterServices(container di.Container) error {
-	fmt.Printf("Registering database services for %s\n", f.name)
-	return nil
-}
-
-func (f *DatabaseFeature) CreateComponent(container di.Container) (lifecycle.Component, error) {
-	return &DatabaseComponent{name: f.name}, nil
-}
-
-func (f *DatabaseFeature) GetRetryConfig() *lifecycle.RetryConfig {
-	return nil
-}
-
-func (f *DatabaseFeature) GetMetadata() orchestrator.FeatureMetadata {
-	return orchestrator.FeatureMetadata{
-		Name:        f.name,
-		Version:     "2.1.0",
-		Description: "PostgreSQL database service",
-		Tags:        []string{"database", "postgresql", "persistence"},
-	}
-}
-
-// CacheFeature represents a cache service
-type CacheFeature struct {
-	name     string
-	priority int
-}
-
-func (f *CacheFeature) GetName() string {
-	return f.name
-}
-
-func (f *CacheFeature) GetDependencies() []string {
-	return []string{"database"} // Depends on database
-}
-
-func (f *CacheFeature) GetPriority() int {
-	return f.priority
-}
-
-func (f *CacheFeature) RegisterServices(container di.Container) error {
-	fmt.Printf("Registering cache services for %s\n", f.name)
-	return nil
-}
-
-func (f *CacheFeature) CreateComponent(container di.Container) (lifecycle.Component, error) {
-	return &CacheComponent{name: f.name}, nil
-}
-
-func (f *CacheFeature) GetRetryConfig() *lifecycle.RetryConfig {
-	return nil
-}
-
-func (f *CacheFeature) GetMetadata() orchestrator.FeatureMetadata {
-	return orchestrator.FeatureMetadata{
-		Name:        f.name,
-		Version:     "1.5.0",
-		Description: "Redis cache service",
-		Tags:        []string{"cache", "redis", "performance"},
-	}
-}
-
-// APIFeature represents an API server
-type APIFeature struct {
-	name     string
-	priority int
-}
-
-func (f *APIFeature) GetName() string {
-	return f.name
-}
-
-func (f *APIFeature) GetDependencies() []string {
-	return []string{"database", "cache"} // Depends on both database and cache
-}
-
-func (f *APIFeature) GetPriority() int {
-	return f.priority
-}
-
-func (f *APIFeature) RegisterServices(container di.Container) error {
-	fmt.Printf("Registering API services for %s\n", f.name)
-	return nil
-}
-
-func (f *APIFeature) CreateComponent(container di.Container) (lifecycle.Component, error) {
-	return &APIComponent{name: f.name}, nil
-}
-
-func (f *APIFeature) GetRetryConfig() *lifecycle.RetryConfig {
-	return nil
-}
-
-func (f *APIFeature) GetMetadata() orchestrator.FeatureMetadata {
-	return orchestrator.FeatureMetadata{
-		Name:        f.name,
-		Version:     "3.0.0",
-		Description: "REST API server",
-		Tags:        []string{"api", "http", "rest"},
-	}
-}
-
-// WorkerFeature represents a background worker
-type WorkerFeature struct {
-	name     string
-	priority int
-}
-
-func (f *WorkerFeature) GetName() string {
-	return f.name
-}
-
-func (f *WorkerFeature) GetDependencies() []string {
-	return []string{"database", "cache", "api-server"} // Depends on all other services
-}
-
-func (f *WorkerFeature) GetPriority() int {
-	return f.priority
-}
-
-func (f *WorkerFeature) RegisterServices(container di.Container) error {
-	fmt.Printf("Registering worker services for %s\n", f.name)
-	return nil
-}
-
-func (f *WorkerFeature) CreateComponent(container di.Container) (lifecycle.Component, error) {
-	return &WorkerComponent{name: f.name}, nil
-}
-
-func (f *WorkerFeature) GetRetryConfig() *lifecycle.RetryConfig {
-	return nil
-}
-
-func (f *WorkerFeature) GetMetadata() orchestrator.FeatureMetadata {
-	return orchestrator.FeatureMetadata{
-		Name:        f.name,
-		Version:     "1.2.0",
-		Description: "Background job processor",
-		Tags:        []string{"worker", "background", "jobs"},
-	}
-}
-
-// Component implementations
-type DatabaseComponent struct {
-	name string
-}
-
-func (c *DatabaseComponent) Name() string {
-	return c.name
-}
-
-func (c *DatabaseComponent) Dependencies() []string {
-	return []string{}
-}
-
-func (c *DatabaseComponent) Priority() int {
-	return 10
-}
-
-func (c *DatabaseComponent) Start(ctx context.Context) error {
-	fmt.Printf("Starting %s (connecting to PostgreSQL...)\n", c.name)
-	time.Sleep(500 * time.Millisecond) // Simulate connection time
-	fmt.Printf("%s started successfully\n", c.name)
-	return nil
-}
-
-func (c *DatabaseComponent) Stop(ctx context.Context) error {
-	fmt.Printf("Stopping %s (closing database connections...)\n", c.name)
-	time.Sleep(200 * time.Millisecond) // Simulate cleanup time
-	fmt.Printf("%s stopped successfully\n", c.name)
-	return nil
-}
-
-func (c *DatabaseComponent) Health(ctx context.Context) lifecycle.ComponentHealth {
-	return lifecycle.ComponentHealth{
-		Status:    lifecycle.HealthStatusHealthy,
-		Message:   "Database is healthy",
-		Timestamp: time.Now(),
-	}
-}
-
-func (c *DatabaseComponent) GetRetryConfig() *lifecycle.RetryConfig {
-	return nil
-}
-
-type CacheComponent struct {
-	name string
-}
-
-func (c *CacheComponent) Name() string {
-	return c.name
-}
-
-func (c *CacheComponent) Dependencies() []string {
-	return []string{"database"}
-}
-
-func (c *CacheComponent) Priority() int {
-	return 20
-}
-
-func (c *CacheComponent) Start(ctx context.Context) error {
-	fmt.Printf("Starting %s (connecting to Redis...)\n", c.name)
-	time.Sleep(300 * time.Millisecond) // Simulate connection time
-	fmt.Printf("%s started successfully\n", c.name)
-	return nil
-}
-
-func (c *CacheComponent) Stop(ctx context.Context) error {
-	fmt.Printf("Stopping %s (closing Redis connections...)\n", c.name)
-	time.Sleep(150 * time.Millisecond) // Simulate cleanup time
-	fmt.Printf("%s stopped successfully\n", c.name)
-	return nil
-}
-
-func (c *CacheComponent) Health(ctx context.Context) lifecycle.ComponentHealth {
-	return lifecycle.ComponentHealth{
-		Status:    lifecycle.HealthStatusHealthy,
-		Message:   "Cache is healthy",
-		Timestamp: time.Now(),
-	}
-}
-
-func (c *CacheComponent) GetRetryConfig() *lifecycle.RetryConfig {
-	return nil
-}
-
-type APIComponent struct {
-	name string
-}
-
-func (c *APIComponent) Name() string {
-	return c.name
-}
-
-func (c *APIComponent) Dependencies() []string {
-	return []string{"database", "cache"}
-}
-
-func (c *APIComponent) Priority() int {
-	return 30
-}
-
-func (c *APIComponent) Start(ctx context.Context) error {
-	fmt.Printf("Starting %s (binding to port 8080...)\n", c.name)
-	time.Sleep(400 * time.Millisecond) // Simulate startup time
-	fmt.Printf("%s started successfully\n", c.name)
-	return nil
-}
-
-func (c *APIComponent) Stop(ctx context.Context) error {
-	fmt.Printf("Stopping %s (shutting down HTTP server...)\n", c.name)
-	time.Sleep(300 * time.Millisecond) // Simulate shutdown time
-	fmt.Printf("%s stopped successfully\n", c.name)
-	return nil
-}
-
-func (c *APIComponent) Health(ctx context.Context) lifecycle.ComponentHealth {
-	return lifecycle.ComponentHealth{
-		Status:    lifecycle.HealthStatusHealthy,
-		Message:   "API server is healthy",
-		Timestamp: time.Now(),
-	}
-}
-
-func (c *APIComponent) GetRetryConfig() *lifecycle.RetryConfig {
-	return nil
-}
-
-type WorkerComponent struct {
-	name string
-}
-
-func (c *WorkerComponent) Name() string {
-	return c.name
-}
-
-func (c *WorkerComponent) Dependencies() []string {
-	return []string{"database", "cache", "api-server"}
-}
-
-func (c *WorkerComponent) Priority() int {
-	return 40
-}
-
-func (c *WorkerComponent) Start(ctx context.Context) error {
-	fmt.Printf("Starting %s (initializing job queue...)\n", c.name)
-	time.Sleep(200 * time.Millisecond) // Simulate startup time
-	fmt.Printf("%s started successfully\n", c.name)
-	return nil
-}
-
-func (c *WorkerComponent) Stop(ctx context.Context) error {
-	fmt.Printf("Stopping %s (draining job queue...)\n", c.name)
-	time.Sleep(250 * time.Millisecond) // Simulate shutdown time
-	fmt.Printf("%s stopped successfully\n", c.name)
-	return nil
-}
-
-func (c *WorkerComponent) Health(ctx context.Context) lifecycle.ComponentHealth {
-	return lifecycle.ComponentHealth{
-		Status:    lifecycle.HealthStatusHealthy,
-		Message:   "Worker is healthy",
-		Timestamp: time.Now(),
-	}
-}
-
-func (c *WorkerComponent) GetRetryConfig() *lifecycle.RetryConfig {
-	return nil
+	fmt.Println("Application stopped successfully!")
 }

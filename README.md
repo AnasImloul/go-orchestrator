@@ -24,18 +24,15 @@ go-orchestrator/
 │   ├── di/          # Dependency injection container
 │   ├── lifecycle/   # Lifecycle management
 │   └── logger/      # Logging interface
-├── pkg/             # Public API (importable by external projects)
-│   ├── di/          # Public DI interfaces and types
-│   ├── lifecycle/   # Public lifecycle interfaces and types
-│   ├── logger/      # Public logger interfaces and adapters
-│   └── orchestrator/ # Main orchestrator package
 ├── examples/        # Usage examples
 │   ├── basic/       # Simple usage example
 │   ├── advanced/    # Complex orchestration example
+│   ├── simple/      # New declarative API example
 │   └── external-usage/ # External usage example
 ├── docs/           # Documentation
 │   ├── api.md      # API documentation
 │   └── external-usage.md # External usage guide
+├── orchestrator.go # Single entry point for the library
 ├── .gitignore
 ├── LICENSE
 ├── CHANGELOG.md
@@ -47,12 +44,9 @@ go-orchestrator/
 
 ## Public API
 
-The library provides a clean public API through the following packages:
+The library provides a **single entry point** with a clean, declarative API:
 
-- **`github.com/AnasImloul/go-orchestrator/pkg/orchestrator`** - Main orchestrator functionality
-- **`github.com/AnasImloul/go-orchestrator/pkg/di`** - Dependency injection interfaces and types
-- **`github.com/AnasImloul/go-orchestrator/pkg/lifecycle`** - Component lifecycle management
-- **`github.com/AnasImloul/go-orchestrator/pkg/logger`** - Logging interfaces and adapters
+- **`github.com/AnasImloul/go-orchestrator`** - Single entry point with all functionality
 
 **Note**: The `internal/` packages are not accessible to external projects and should not be imported.
 
@@ -79,60 +73,84 @@ package main
 
 import (
     "context"
-    "log/slog"
+    "reflect"
     
-    "github.com/AnasImloul/go-orchestrator/pkg/orchestrator"
+    "github.com/AnasImloul/go-orchestrator"
 )
 
 func main() {
-    // Create logger
-    logger := slog.Default()
+    // Create application
+    app := orchestrator.New()
     
-    // Create orchestrator
-    config := orchestrator.DefaultOrchestratorConfig()
-    orch, err := orchestrator.NewOrchestrator(config, logger)
-    if err != nil {
-        panic(err)
-    }
-    
-    // Register features
-    orch.RegisterFeature(&MyFeature{})
+    // Add features declaratively
+    app.AddFeature(
+        orchestrator.NewFeature("database").
+            WithPriority(10).
+            WithServiceInstance(
+                reflect.TypeOf((*DatabaseService)(nil)),
+                &DatabaseService{host: "localhost", port: 5432},
+            ).
+            WithComponent(
+                func(ctx context.Context, container *orchestrator.Container) error {
+                    db, _ := orchestrator.ResolveType[*DatabaseService](container)
+                    return db.Connect()
+                },
+                func(ctx context.Context) error {
+                    db, _ := orchestrator.ResolveType[*DatabaseService](app.Container())
+                    return db.Disconnect()
+                },
+                nil, // No health check
+            ),
+    )
     
     // Start application
     ctx := context.Background()
-    if err := orch.Start(ctx); err != nil {
+    if err := app.Start(ctx); err != nil {
         panic(err)
     }
     
     // Application is now running...
     
     // Graceful shutdown
-    orch.Stop(ctx)
+    app.Stop(ctx)
 }
 ```
 
-## Dependency Injection
+## Key Features
 
-### Basic Usage
+### Declarative API
+- **Single entry point**: Import only `github.com/AnasImloul/go-orchestrator`
+- **Fluent interface**: Chain method calls for clean, readable code
+- **Type-safe**: Generic helpers for service resolution
+- **Less verbose**: Minimal boilerplate code
 
+### Dependency Injection
 ```go
-// Register a service
-container.RegisterSingleton(di.TypeOf[MyService](), func(ctx context.Context, c di.Container) (interface{}, error) {
-    return &MyService{}, nil
-})
+// Register services declaratively
+app.AddFeature(
+    orchestrator.NewFeature("my-service").
+        WithService(
+            reflect.TypeOf((*MyService)(nil)),
+            func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {
+                return &MyService{}, nil
+            },
+            orchestrator.Singleton,
+        ),
+)
 
-// Resolve a service
-service, err := di.Resolve[MyService](container)
-if err != nil {
-    panic(err)
-}
+// Resolve services type-safely
+service, err := orchestrator.ResolveType[*MyService](container)
 ```
 
-### Generic Helpers
-
+### Lifecycle Management
 ```go
-// Type-safe resolution
-service := di.MustResolve[MyService](container)
+// Automatic startup/shutdown ordering based on dependencies and priorities
+app.AddFeature(
+    orchestrator.NewFeature("database").
+        WithPriority(10). // Start first
+        WithDependencies("config"). // Depends on config
+        WithComponent(startFunc, stopFunc, healthFunc),
+)
 ```
 
 ## Using as External Dependency
