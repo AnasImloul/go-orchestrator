@@ -3,402 +3,224 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sync"
 	"time"
 
-	"github.com/AnasImloul/go-orchestrator/internal/di"
-	"github.com/AnasImloul/go-orchestrator/internal/lifecycle"
-	"github.com/AnasImloul/go-orchestrator/internal/logger"
+	"github.com/AnasImloul/go-orchestrator/pkg/di"
+	"github.com/AnasImloul/go-orchestrator/pkg/lifecycle"
+	"github.com/AnasImloul/go-orchestrator/pkg/logger"
 )
 
-// DefaultOrchestrator implements the Orchestrator interface
-type DefaultOrchestrator struct {
-	container         di.Container
-	lifecycleManager  lifecycle.LifecycleManager
-	features          map[string]Feature
-	config            OrchestratorConfig
-	logger            logger.Logger
-	mu                sync.RWMutex
-	healthCheckTicker *time.Ticker
-	stopHealthCheck   chan struct{}
+// NewOrchestrator creates a new orchestrator with the default configuration.
+func NewOrchestrator() (Orchestrator, error) {
+	return NewOrchestratorWithConfig(DefaultOrchestratorConfig())
 }
 
-// NewOrchestrator creates a new application orchestrator
-func NewOrchestrator(config OrchestratorConfig, logger logger.Logger) (*DefaultOrchestrator, error) {
-	// Create DI container
-	diConfig := di.ContainerConfig{
-		EnableValidation:    true,
-		EnableCircularCheck: true,
-		EnableInterception:  config.EnableTracing,
-		DefaultLifetime:     di.Singleton,
-		MaxResolutionDepth:  50,
-		EnableMetrics:       config.EnableMetrics,
+// NewOrchestratorWithConfig creates a new orchestrator with the specified configuration.
+func NewOrchestratorWithConfig(config OrchestratorConfig) (Orchestrator, error) {
+	// Create a simple logger (external users can provide their own)
+	logger := &simpleLogger{}
+
+	// Create a simple DI container
+	container := &simpleContainer{
+		services: make(map[string]interface{}),
 	}
 
-	container := di.NewContainer(diConfig, logger)
+	// Create a simple lifecycle manager
+	lifecycleManager := &simpleLifecycleManager{
+		components: make(map[string]lifecycle.Component),
+		phase:      lifecycle.PhaseStopped,
+		logger:     logger,
+	}
 
-	// Create lifecycle manager
-	lifecycleManager := lifecycle.NewLifecycleManager(logger)
-
-	orchestrator := &DefaultOrchestrator{
+	// Create orchestrator
+	orch := &defaultOrchestrator{
 		container:        container,
 		lifecycleManager: lifecycleManager,
 		features:         make(map[string]Feature),
 		config:           config,
 		logger:           logger,
-		stopHealthCheck:  make(chan struct{}),
+		mu:               sync.RWMutex{},
 	}
 
-	// Register core services in DI container
-	if err := orchestrator.registerCoreServices(); err != nil {
-		return nil, fmt.Errorf("failed to register core services: %w", err)
-	}
-
-	return orchestrator, nil
+	return orch, nil
 }
 
-// RegisterFeature registers a feature with the orchestrator
-func (o *DefaultOrchestrator) RegisterFeature(feature Feature) error {
+// defaultOrchestrator implements the Orchestrator interface.
+type defaultOrchestrator struct {
+	container        di.Container
+	lifecycleManager lifecycle.LifecycleManager
+	features         map[string]Feature
+	config           OrchestratorConfig
+	logger           logger.Logger
+	mu               sync.RWMutex
+}
+
+// RegisterFeature registers a feature with the orchestrator.
+func (o *defaultOrchestrator) RegisterFeature(feature Feature) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
 	name := feature.GetName()
-
-	// Check if feature is already registered
 	if _, exists := o.features[name]; exists {
 		return fmt.Errorf("feature %s is already registered", name)
 	}
 
-	// Store feature
 	o.features[name] = feature
-
-	// Create component wrapper
-	wrapper := &ComponentWrapper{
-		feature:   feature,
-		container: o.container,
-	}
-
-	// Register component with lifecycle manager
-	if err := o.lifecycleManager.RegisterComponent(wrapper); err != nil {
-		delete(o.features, name)
-		return fmt.Errorf("failed to register feature component: %w", err)
-	}
-
-	if o.logger != nil {
-		o.logger.Info("Feature registered",
-			"feature", name,
-			"dependencies", feature.GetDependencies(),
-			"priority", feature.GetPriority(),
-		)
-	}
-
+	o.logger.Info("Feature registered", "name", name)
 	return nil
 }
 
-// Start starts the application in the correct order
-func (o *DefaultOrchestrator) Start(ctx context.Context) error {
+// Start starts the orchestrator.
+func (o *defaultOrchestrator) Start(ctx context.Context) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	if o.logger != nil {
-		o.logger.Info("Starting application orchestrator",
-			"features", len(o.features),
-			"timeout", o.config.StartupTimeout,
-		)
+	o.logger.Info("Starting orchestrator")
+
+	// Register all features as components
+	for name, feature := range o.features {
+		wrapper := &componentWrapper{
+			feature:   feature,
+			container: o.container,
+		}
+		
+		if err := o.lifecycleManager.RegisterComponent(wrapper); err != nil {
+			return fmt.Errorf("failed to register component %s: %w", name, err)
+		}
 	}
 
-	// Create timeout context
-	startupCtx, cancel := context.WithTimeout(ctx, o.config.StartupTimeout)
-	defer cancel()
-
-	// Add startup hooks
-	if err := o.addStartupHooks(); err != nil {
-		return fmt.Errorf("failed to add startup hooks: %w", err)
-	}
-
-	// Start lifecycle manager (which will start all features in order)
-	if err := o.lifecycleManager.Start(startupCtx); err != nil {
-		return fmt.Errorf("failed to start lifecycle manager: %w", err)
-	}
-
-	// Start periodic health checks
-	if o.config.HealthCheckInterval > 0 {
-		o.startHealthCheckRoutine()
-	}
-
-	if o.logger != nil {
-		o.logger.Info("Application orchestrator started successfully")
-	}
-	return nil
+	// Start the lifecycle manager
+	return o.lifecycleManager.Start(ctx)
 }
 
-// Stop stops the application gracefully
-func (o *DefaultOrchestrator) Stop(ctx context.Context) error {
+// Stop stops the orchestrator.
+func (o *defaultOrchestrator) Stop(ctx context.Context) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	if o.logger != nil {
-		o.logger.Info("Stopping application orchestrator")
-	}
-
-	// Stop health check routine
-	if o.healthCheckTicker != nil {
-		close(o.stopHealthCheck)
-		o.healthCheckTicker.Stop()
-		o.healthCheckTicker = nil
-	}
-
-	// Create timeout context
-	shutdownCtx, cancel := context.WithTimeout(ctx, o.config.ShutdownTimeout)
-	defer cancel()
-
-	// Add shutdown hooks
-	if err := o.addShutdownHooks(); err != nil {
-		if o.logger != nil {
-			o.logger.Error("Failed to add shutdown hooks",
-				"error", err.Error(),
-			)
-		}
-	}
-
-	// Stop lifecycle manager (which will stop all features in reverse order)
-	if err := o.lifecycleManager.Stop(shutdownCtx); err != nil {
-		if o.logger != nil {
-			o.logger.Error("Failed to stop lifecycle manager gracefully",
-				"error", err.Error(),
-			)
-		}
-	}
-
-	// Dispose DI container
-	if err := o.container.Dispose(); err != nil {
-		if o.logger != nil {
-			o.logger.Error("Failed to dispose DI container",
-				"error", err.Error(),
-			)
-		}
-	}
-
-	if o.logger != nil {
-		o.logger.Info("Application orchestrator stopped")
-	}
-	return nil
+	o.logger.Info("Stopping orchestrator")
+	return o.lifecycleManager.Stop(ctx)
 }
 
-// GetContainer returns the DI container
-func (o *DefaultOrchestrator) GetContainer() di.Container {
-	return o.container
-}
-
-// GetLifecycleManager returns the lifecycle manager
-func (o *DefaultOrchestrator) GetLifecycleManager() lifecycle.LifecycleManager {
-	return o.lifecycleManager
-}
-
-// GetPhase returns the current application phase
-func (o *DefaultOrchestrator) GetPhase() lifecycle.Phase {
-	return o.lifecycleManager.GetPhase()
-}
-
-// HealthCheck performs a health check on all components
-func (o *DefaultOrchestrator) HealthCheck(ctx context.Context) HealthReport {
+// HealthCheck performs a health check on all components.
+func (o *defaultOrchestrator) HealthCheck(ctx context.Context) HealthReport {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 
+	states := o.lifecycleManager.GetAllComponentStates()
+	
 	report := HealthReport{
-		Timestamp:  time.Now(),
-		Phase:      o.lifecycleManager.GetPhase(),
-		Features:   make(map[string]FeatureHealth),
-		Components: make(map[string]lifecycle.ComponentHealth),
-		Summary:    HealthSummary{TotalFeatures: len(o.features)},
+		Status:    "healthy",
+		Timestamp: time.Now(),
+		Features:  make(map[string]FeatureHealth),
+		Summary:   HealthSummary{},
 	}
 
-	// Get component health from lifecycle manager
-	componentHealth := o.lifecycleManager.HealthCheck(ctx)
-	report.Components = componentHealth
+	healthyCount := 0
+	unhealthyCount := 0
 
-	// Check feature health
-	for name, feature := range o.features {
-		health := o.checkFeatureHealth(ctx, feature, componentHealth[name])
+	for name, state := range states {
+		feature := o.features[name]
+		health := FeatureHealth{
+			Status:    state.Health.Status.String(),
+			Message:   state.Health.Message,
+			Timestamp: state.Health.Timestamp,
+			Metadata:  feature.GetMetadata(),
+		}
+
 		report.Features[name] = health
 
-		// Update summary
-		switch health.Status {
-		case HealthStatusHealthy:
-			report.Summary.HealthyFeatures++
-		case HealthStatusDegraded:
-			report.Summary.DegradedFeatures++
-		case HealthStatusUnhealthy:
-			report.Summary.UnhealthyFeatures++
-		default:
-			report.Summary.UnknownFeatures++
+		switch state.Health.Status {
+		case lifecycle.HealthStatusHealthy:
+			healthyCount++
+		case lifecycle.HealthStatusUnhealthy:
+			unhealthyCount++
 		}
 	}
 
-	// Determine overall status
-	report.Status = o.determineOverallHealth(report.Summary)
+	report.Summary.TotalFeatures = len(o.features)
+	report.Summary.HealthyFeatures = healthyCount
+	report.Summary.UnhealthyFeatures = unhealthyCount
+
+	if unhealthyCount > 0 {
+		report.Status = "unhealthy"
+	}
 
 	return report
 }
 
-// Private helper methods
+// GetContainer returns the DI container.
+func (o *defaultOrchestrator) GetContainer() di.Container {
+	return o.container
+}
 
-// registerCoreServices registers core services in the DI container
-func (o *DefaultOrchestrator) registerCoreServices() error {
-	// Register the DI container itself
-	if err := o.container.RegisterInstance(reflect.TypeOf((*di.Container)(nil)).Elem(), o.container); err != nil {
-		return fmt.Errorf("failed to register DI container: %w", err)
+// GetLifecycleManager returns the lifecycle manager.
+func (o *defaultOrchestrator) GetLifecycleManager() lifecycle.LifecycleManager {
+	return o.lifecycleManager
+}
+
+// componentWrapper wraps a feature as a lifecycle component.
+type componentWrapper struct {
+	feature   Feature
+	container di.Container
+	component lifecycle.Component
+}
+
+// Name returns the component name.
+func (w *componentWrapper) Name() string {
+	return w.feature.GetName()
+}
+
+// Dependencies returns the component dependencies.
+func (w *componentWrapper) Dependencies() []string {
+	return w.feature.GetDependencies()
+}
+
+// Priority returns the component priority.
+func (w *componentWrapper) Priority() int {
+	return w.feature.GetPriority()
+}
+
+// Start starts the component.
+func (w *componentWrapper) Start(ctx context.Context) error {
+	// Register services first
+	if err := w.feature.RegisterServices(w.container); err != nil {
+		return err
 	}
 
-	// Register the lifecycle manager
-	if err := o.container.RegisterInstance(reflect.TypeOf((*lifecycle.LifecycleManager)(nil)).Elem(), o.lifecycleManager); err != nil {
-		return fmt.Errorf("failed to register lifecycle manager: %w", err)
+	// Create and start the actual component
+	component, err := w.feature.CreateComponent(w.container)
+	if err != nil {
+		return err
 	}
 
-	// Note: We don't register the orchestrator itself to avoid circular disposal issues
-	// The orchestrator manages the container, so it should not be managed by it
+	w.component = component
+	return component.Start(ctx)
+}
 
+// Stop stops the component.
+func (w *componentWrapper) Stop(ctx context.Context) error {
+	if w.component != nil {
+		return w.component.Stop(ctx)
+	}
 	return nil
 }
 
-// addStartupHooks adds startup lifecycle hooks
-func (o *DefaultOrchestrator) addStartupHooks() error {
-	startupHook := func(ctx context.Context, event lifecycle.Event) error {
-		if o.logger != nil {
-			o.logger.Info("Startup event",
-				"component", event.Component,
-				"phase", event.Phase,
-			)
-		}
-		return nil
+// Health returns the component health.
+func (w *componentWrapper) Health(ctx context.Context) lifecycle.ComponentHealth {
+	if w.component != nil {
+		return w.component.Health(ctx)
 	}
 
-	return o.lifecycleManager.AddHook(lifecycle.PhaseStartup, startupHook)
-}
-
-// addShutdownHooks adds shutdown lifecycle hooks
-func (o *DefaultOrchestrator) addShutdownHooks() error {
-	shutdownHook := func(ctx context.Context, event lifecycle.Event) error {
-		if o.logger != nil {
-			o.logger.Info("Shutdown event",
-				"component", event.Component,
-				"phase", event.Phase,
-			)
-		}
-		return nil
-	}
-
-	return o.lifecycleManager.AddHook(lifecycle.PhaseShutdown, shutdownHook)
-}
-
-// startHealthCheckRoutine starts the periodic health check routine
-func (o *DefaultOrchestrator) startHealthCheckRoutine() {
-	o.healthCheckTicker = time.NewTicker(o.config.HealthCheckInterval)
-
-	go func() {
-		// Add panic recovery for the goroutine
-		defer func() {
-			if r := recover(); r != nil {
-				if o.logger != nil {
-					o.logger.Error("Panic in health check routine", "panic", r)
-				}
-			}
-		}()
-
-		for {
-			select {
-			case <-o.healthCheckTicker.C:
-				// Check if orchestrator is still running
-				if o.GetPhase() == lifecycle.PhaseStopped {
-					return
-				}
-
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-
-				// Use retry logic for health checks
-				var report HealthReport
-				retryConfig := lifecycle.DefaultRetryConfig()
-				retryConfig.MaxAttempts = 2 // Only retry once for health checks
-				retryConfig.InitialDelay = 100 * time.Millisecond
-
-				retryErr := lifecycle.RetryWithBackoff(ctx, retryConfig, func() error {
-					report = o.HealthCheck(ctx)
-					// Consider health check successful if we get any report
-					return nil
-				})
-
-				cancel()
-
-				if retryErr != nil {
-					if o.logger != nil {
-						o.logger.Error("Health check failed after retries", "error", retryErr)
-					}
-					continue
-				}
-
-				if report.Status != HealthStatusHealthy {
-					if o.logger != nil {
-						o.logger.Warn("Health check failed",
-							"status", report.Status,
-							"unhealthy_features", report.Summary.UnhealthyFeatures,
-							"degraded_features", report.Summary.DegradedFeatures,
-						)
-					}
-				} else {
-					if o.logger != nil {
-						o.logger.Debug("Health check passed",
-							"healthy_features", report.Summary.HealthyFeatures,
-						)
-					}
-				}
-
-			case <-o.stopHealthCheck:
-				return
-			}
-		}
-	}()
-}
-
-// checkFeatureHealth checks the health of a specific feature
-func (o *DefaultOrchestrator) checkFeatureHealth(ctx context.Context, feature Feature, componentHealth lifecycle.ComponentHealth) FeatureHealth {
-	health := FeatureHealth{
+	return lifecycle.ComponentHealth{
+		Status:    lifecycle.HealthStatusUnknown,
+		Message:   "Component not initialized",
 		Timestamp: time.Now(),
-		Metadata:  feature.GetMetadata(),
 	}
-
-	// Base health on component health
-	switch componentHealth.Status {
-	case lifecycle.HealthStatusHealthy:
-		health.Status = HealthStatusHealthy
-		health.Message = "Feature is healthy"
-	case lifecycle.HealthStatusDegraded:
-		health.Status = HealthStatusDegraded
-		health.Message = componentHealth.Message
-	case lifecycle.HealthStatusUnhealthy:
-		health.Status = HealthStatusUnhealthy
-		health.Message = componentHealth.Message
-	default:
-		health.Status = HealthStatusUnknown
-		health.Message = "Feature health unknown"
-	}
-
-	return health
 }
 
-// determineOverallHealth determines the overall application health
-func (o *DefaultOrchestrator) determineOverallHealth(summary HealthSummary) HealthStatus {
-	if summary.UnhealthyFeatures > 0 {
-		return HealthStatusUnhealthy
-	}
-
-	if summary.DegradedFeatures > 0 {
-		return HealthStatusDegraded
-	}
-
-	if summary.HealthyFeatures == summary.TotalFeatures && summary.TotalFeatures > 0 {
-		return HealthStatusHealthy
-	}
-
-	return HealthStatusUnknown
+// GetRetryConfig returns the retry configuration.
+func (w *componentWrapper) GetRetryConfig() *lifecycle.RetryConfig {
+	return w.feature.GetRetryConfig()
 }

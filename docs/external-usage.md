@@ -6,6 +6,17 @@ This guide explains how to use the Go Orchestrator library in your own projects.
 
 The Go Orchestrator library is production-ready with a stable public API. All features are fully functional and can be used in production applications.
 
+## Public API Packages
+
+The library provides the following public packages that external projects can import:
+
+- `github.com/AnasImloul/go-orchestrator/pkg/orchestrator` - Main orchestrator functionality
+- `github.com/AnasImloul/go-orchestrator/pkg/di` - Dependency injection interfaces and types
+- `github.com/AnasImloul/go-orchestrator/pkg/lifecycle` - Component lifecycle management
+- `github.com/AnasImloul/go-orchestrator/pkg/logger` - Logging interfaces and adapters
+
+**Note**: The `internal/` packages are not accessible to external projects and should not be imported.
+
 ## Installation
 
 ### Using Go Modules
@@ -67,13 +78,8 @@ func main() {
     }))
     logger := logger.NewSlogAdapter(slogLogger)
 
-    // Create orchestrator configuration
-    config := orchestrator.DefaultOrchestratorConfig()
-    config.StartupTimeout = 30 * time.Second
-    config.ShutdownTimeout = 15 * time.Second
-
-    // Create orchestrator
-    orch, err := orchestrator.NewOrchestrator(config, logger)
+    // Create orchestrator (simplified API)
+    orch, err := orchestrator.NewOrchestrator()
     if err != nil {
         panic(err)
     }

@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/AnasImloul/go-orchestrator/internal/di"
-	"github.com/AnasImloul/go-orchestrator/internal/lifecycle"
-	"github.com/AnasImloul/go-orchestrator/internal/logger"
+	"github.com/AnasImloul/go-orchestrator/pkg/di"
+	"github.com/AnasImloul/go-orchestrator/pkg/lifecycle"
+	"github.com/AnasImloul/go-orchestrator/pkg/logger"
 	"github.com/AnasImloul/go-orchestrator/pkg/orchestrator"
 )
 
@@ -111,8 +111,8 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 
-	// Create logger adapter
-	logger := logger.NewSlogAdapter(slogLogger)
+	// Create logger adapter (not used in simple example)
+	_ = logger.NewSlogAdapter(slogLogger)
 
 	// Create orchestrator configuration
 	config := orchestrator.DefaultOrchestratorConfig()
@@ -120,7 +120,7 @@ func main() {
 	config.ShutdownTimeout = 5 * time.Second
 
 	// Create orchestrator
-	orch, err := orchestrator.NewOrchestrator(config, logger)
+	orch, err := orchestrator.NewOrchestrator()
 	if err != nil {
 		fmt.Printf("Failed to create orchestrator: %v\n", err)
 		os.Exit(1)

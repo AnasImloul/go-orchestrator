@@ -24,13 +24,18 @@ go-orchestrator/
 │   ├── di/          # Dependency injection container
 │   ├── lifecycle/   # Lifecycle management
 │   └── logger/      # Logging interface
-├── pkg/             # Public API (importable)
+├── pkg/             # Public API (importable by external projects)
+│   ├── di/          # Public DI interfaces and types
+│   ├── lifecycle/   # Public lifecycle interfaces and types
+│   ├── logger/      # Public logger interfaces and adapters
 │   └── orchestrator/ # Main orchestrator package
 ├── examples/        # Usage examples
 │   ├── basic/       # Simple usage example
-│   └── advanced/    # Complex orchestration example
+│   ├── advanced/    # Complex orchestration example
+│   └── external-usage/ # External usage example
 ├── docs/           # Documentation
-│   └── api.md      # API documentation
+│   ├── api.md      # API documentation
+│   └── external-usage.md # External usage guide
 ├── .gitignore
 ├── LICENSE
 ├── CHANGELOG.md
@@ -39,6 +44,17 @@ go-orchestrator/
 ├── go.mod
 └── README.md
 ```
+
+## Public API
+
+The library provides a clean public API through the following packages:
+
+- **`github.com/AnasImloul/go-orchestrator/pkg/orchestrator`** - Main orchestrator functionality
+- **`github.com/AnasImloul/go-orchestrator/pkg/di`** - Dependency injection interfaces and types
+- **`github.com/AnasImloul/go-orchestrator/pkg/lifecycle`** - Component lifecycle management
+- **`github.com/AnasImloul/go-orchestrator/pkg/logger`** - Logging interfaces and adapters
+
+**Note**: The `internal/` packages are not accessible to external projects and should not be imported.
 
 ## Installation
 

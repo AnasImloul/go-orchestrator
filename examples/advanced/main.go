@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/AnasImloul/go-orchestrator/internal/di"
-	"github.com/AnasImloul/go-orchestrator/internal/lifecycle"
-	"github.com/AnasImloul/go-orchestrator/internal/logger"
+	"github.com/AnasImloul/go-orchestrator/pkg/di"
+	"github.com/AnasImloul/go-orchestrator/pkg/lifecycle"
+	"github.com/AnasImloul/go-orchestrator/pkg/logger"
 	"github.com/AnasImloul/go-orchestrator/pkg/orchestrator"
 )
 
@@ -23,8 +23,8 @@ func main() {
 	// Create logger adapter
 	logger := logger.NewSlogAdapter(slogLogger)
 
-	// Create orchestrator with custom configuration
-	config := orchestrator.OrchestratorConfig{
+	// Create orchestrator with custom configuration (not used in simple example)
+	_ = orchestrator.OrchestratorConfig{
 		StartupTimeout:      15 * time.Second,
 		ShutdownTimeout:     10 * time.Second,
 		HealthCheckInterval: 30 * time.Second,
@@ -43,7 +43,7 @@ func main() {
 		},
 	}
 
-	orch, err := orchestrator.NewOrchestrator(config, logger)
+	orch, err := orchestrator.NewOrchestrator()
 	if err != nil {
 		fmt.Printf("Failed to create orchestrator: %v\n", err)
 		os.Exit(1)
