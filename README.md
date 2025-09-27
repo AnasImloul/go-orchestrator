@@ -46,6 +46,16 @@ go-orchestrator/
 go get github.com/AnasImloul/go-orchestrator
 ```
 
+### Using Specific Version
+
+```bash
+# Get latest version
+go get github.com/AnasImloul/go-orchestrator@latest
+
+# Get specific version
+go get github.com/AnasImloul/go-orchestrator@v1.0.0
+```
+
 ## Quick Start
 
 ```go
@@ -109,6 +119,75 @@ if err != nil {
 service := di.MustResolve[MyService](container)
 ```
 
+## Using as External Dependency
+
+### 1. Install the Library
+
+```bash
+go get github.com/AnasImloul/go-orchestrator
+```
+
+### 2. Import Required Packages
+
+```go
+import (
+    "github.com/AnasImloul/go-orchestrator/pkg/orchestrator"
+    "github.com/AnasImloul/go-orchestrator/pkg/di"
+    "github.com/AnasImloul/go-orchestrator/pkg/lifecycle"
+    "github.com/AnasImloul/go-orchestrator/pkg/logger"
+)
+```
+
+> **Note**: The public API is currently under development. The examples show intended usage patterns. For working examples, see the `examples/` directory.
+
+### 3. Create Your Features
+
+```go
+type MyFeature struct {
+    name string
+}
+
+func (f *MyFeature) GetName() string { return f.name }
+func (f *MyFeature) GetDependencies() []string { return []string{} }
+func (f *MyFeature) GetPriority() int { return 100 }
+func (f *MyFeature) RegisterServices(container di.Container) error { return nil }
+func (f *MyFeature) CreateComponent(container di.Container) (lifecycle.Component, error) {
+    return &MyComponent{name: f.name}, nil
+}
+func (f *MyFeature) GetRetryConfig() *lifecycle.RetryConfig { return nil }
+func (f *MyFeature) GetMetadata() orchestrator.FeatureMetadata {
+    return orchestrator.FeatureMetadata{Name: f.name, Description: "My feature"}
+}
+```
+
+### 4. Start the Orchestrator
+
+```go
+// Create logger
+logger := logger.NewSlogAdapter(slog.Default())
+
+// Create orchestrator
+config := orchestrator.DefaultOrchestratorConfig()
+orch, err := orchestrator.NewOrchestrator(config, logger)
+if err != nil {
+    panic(err)
+}
+
+// Register features
+orch.RegisterFeature(&MyFeature{name: "my-service"})
+
+// Start application
+ctx := context.Background()
+if err := orch.Start(ctx); err != nil {
+    panic(err)
+}
+
+// Graceful shutdown
+defer orch.Stop(ctx)
+```
+
+For complete examples, see the [usage documentation](docs/usage.md), [external usage guide](docs/external-usage.md), and [external usage example](examples/external-usage/).
+
 ## Examples
 
 ### Basic Example
@@ -119,6 +198,10 @@ See `examples/basic/main.go` for a simple usage example.
 
 See `examples/advanced/main.go` for a complex orchestration example with multiple dependent services.
 
+### External Usage Example
+
+See `examples/external-usage/main.go` for a complete example showing how to use the library as an external dependency in your own project.
+
 ### Running Examples
 
 ```bash
@@ -127,6 +210,10 @@ go run examples/basic/main.go
 
 # Run the advanced example
 go run examples/advanced/main.go
+
+# Run the external usage example
+cd examples/external-usage
+go run main.go
 
 # Run the command-line example
 go run cmd/example/main.go
