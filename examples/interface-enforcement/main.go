@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	"github.com/AnasImloul/go-orchestrator"
 )
@@ -25,11 +24,10 @@ func main() {
 	
 	// Register the service as an interface
 	app.AddFeature(
-		orchestrator.NewFeature("test").
-			WithServiceInstance(
-				reflect.TypeOf((*TestService)(nil)).Elem(),
-				&testService{},
-			),
+		orchestrator.WithService[TestService](&testService{})(
+			orchestrator.NewFeature("test"),
+		).
+			WithLifetime(orchestrator.Singleton),
 	)
 	
 	// Start the app to register services

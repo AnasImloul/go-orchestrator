@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/AnasImloul/go-orchestrator"
@@ -122,119 +121,84 @@ func main() {
 
 	// Add independent services (these will start in parallel at level 0)
 	app.AddFeature(
-		orchestrator.NewFeature("cache").
-			WithServiceInstance(
-				reflect.TypeOf((*CacheService)(nil)).Elem(),
-				&cacheService{host: "localhost", port: 6379},
-			).
+		orchestrator.WithService[CacheService](&cacheService{host: "localhost", port: 6379})(
+			orchestrator.NewFeature("cache"),
+		).
+			WithLifetime(orchestrator.Singleton).
 			WithComponent(
 				orchestrator.NewComponent().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						cache, err := orchestrator.ResolveType[CacheService](container)
-						if err != nil {
-							return err
-						}
+					WithStart(orchestrator.WithStartFunc[CacheService](func(cache CacheService) error {
 						return cache.Connect()
-					}).
-					WithStop(func(ctx context.Context) error {
-						cache, err := orchestrator.ResolveType[CacheService](app.Container())
-						if err != nil {
-							return err
-						}
+					})).
+					WithStop(orchestrator.WithStopFuncWithApp[CacheService](app, func(cache CacheService) error {
 						return cache.Disconnect()
-					}),
+					})),
 			),
 	)
 
 	app.AddFeature(
-		orchestrator.NewFeature("metrics").
-			WithServiceInstance(
-				reflect.TypeOf((*MetricsService)(nil)).Elem(),
-				&metricsService{port: 9090},
-			).
+		orchestrator.WithService[MetricsService](&metricsService{port: 9090})(
+			orchestrator.NewFeature("metrics"),
+		).
+			WithLifetime(orchestrator.Singleton).
 			WithComponent(
 				orchestrator.NewComponent().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						metrics, err := orchestrator.ResolveType[MetricsService](container)
-						if err != nil {
-							return err
-						}
+					WithStart(orchestrator.WithStartFunc[MetricsService](func(metrics MetricsService) error {
 						return metrics.Start()
-					}).
-					WithStop(func(ctx context.Context) error {
-						metrics, err := orchestrator.ResolveType[MetricsService](app.Container())
-						if err != nil {
-							return err
-						}
+					})).
+					WithStop(orchestrator.WithStopFuncWithApp[MetricsService](app, func(metrics MetricsService) error {
 						return metrics.Stop()
-					}),
+					})),
 			),
 	)
 
 	app.AddFeature(
-		orchestrator.NewFeature("logging").
-			WithServiceInstance(
-				reflect.TypeOf((*LoggingService)(nil)).Elem(),
-				&loggingService{level: "info"},
-			).
+		orchestrator.WithService[LoggingService](&loggingService{level: "info"})(
+			orchestrator.NewFeature("logging"),
+		).
+			WithLifetime(orchestrator.Singleton).
 			WithComponent(
 				orchestrator.NewComponent().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						logging, err := orchestrator.ResolveType[LoggingService](container)
-						if err != nil {
-							return err
-						}
+					WithStart(orchestrator.WithStartFunc[LoggingService](func(logging LoggingService) error {
 						return logging.Initialize()
-					}).
-					WithStop(func(ctx context.Context) error {
-						logging, err := orchestrator.ResolveType[LoggingService](app.Container())
-						if err != nil {
-							return err
-						}
+					})).
+					WithStop(orchestrator.WithStopFuncWithApp[LoggingService](app, func(logging LoggingService) error {
 						return logging.Shutdown()
-					}),
+					})),
 			),
 	)
 
 	// Add API service that depends on all three (this will start at level 1)
 	app.AddFeature(
-		orchestrator.NewFeature("api").
-			WithDependencies("cache", "metrics", "logging").
-			WithService(
-				reflect.TypeOf((*APIService)(nil)).Elem(),
-				func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {
-					cache, err := orchestrator.ResolveType[CacheService](container)
-					if err != nil {
-						return nil, err
-					}
-					metrics, err := orchestrator.ResolveType[MetricsService](container)
-					if err != nil {
-						return nil, err
-					}
-					logging, err := orchestrator.ResolveType[LoggingService](container)
-					if err != nil {
-						return nil, err
-					}
-					return &apiService{port: 8080, cache: cache, metrics: metrics, logging: logging}, nil
-				},
-				orchestrator.Singleton,
-			).
+		orchestrator.WithServiceFactory[APIService](
+			func(ctx context.Context, container *orchestrator.Container) (APIService, error) {
+				cache, err := orchestrator.ResolveType[CacheService](container)
+				if err != nil {
+					return nil, err
+				}
+				metrics, err := orchestrator.ResolveType[MetricsService](container)
+				if err != nil {
+					return nil, err
+				}
+				logging, err := orchestrator.ResolveType[LoggingService](container)
+				if err != nil {
+					return nil, err
+				}
+				return &apiService{port: 8080, cache: cache, metrics: metrics, logging: logging}, nil
+			},
+		)(
+			orchestrator.NewFeature("api").
+				WithDependencies("cache", "metrics", "logging"),
+		).
+			WithLifetime(orchestrator.Singleton).
 			WithComponent(
 				orchestrator.NewComponent().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						api, err := orchestrator.ResolveType[APIService](container)
-						if err != nil {
-							return err
-						}
+					WithStart(orchestrator.WithStartFunc[APIService](func(api APIService) error {
 						return api.Start()
-					}).
-					WithStop(func(ctx context.Context) error {
-						api, err := orchestrator.ResolveType[APIService](app.Container())
-						if err != nil {
-							return err
-						}
+					})).
+					WithStop(orchestrator.WithStopFuncWithApp[APIService](app, func(api APIService) error {
 						return api.Stop()
-					}),
+					})),
 			),
 	)
 

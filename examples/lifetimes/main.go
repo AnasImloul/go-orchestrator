@@ -89,53 +89,41 @@ func main() {
 
 	// Add services with different lifetimes
 	app.AddFeature(
-		orchestrator.WithServiceInstanceGeneric[DatabaseService](
-			&databaseService{host: "localhost", port: 5432},
-			orchestrator.Singleton, // Single instance for entire application
-		)(orchestrator.NewFeature("database")).
+		orchestrator.WithService[DatabaseService](&databaseService{host: "localhost", port: 5432})(
+			orchestrator.NewFeature("database"),
+		).
+			WithLifetime(orchestrator.Singleton). // Single instance for entire application
 			WithComponent(
 				orchestrator.NewComponent().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						db, err := orchestrator.ResolveType[DatabaseService](container)
-						if err != nil {
-							return err
-						}
+					WithStart(orchestrator.WithStartFunc[DatabaseService](func(db DatabaseService) error {
 						return db.Connect()
-					}),
+					})),
 			),
 	)
 
 	app.AddFeature(
-		orchestrator.WithServiceInstanceGeneric[CacheService](
-			&cacheService{host: "localhost", port: 6379},
-			orchestrator.Scoped, // One instance per scope (request/operation)
-		)(orchestrator.NewFeature("cache")).
+		orchestrator.WithService[CacheService](&cacheService{host: "localhost", port: 6379})(
+			orchestrator.NewFeature("cache"),
+		).
+			WithLifetime(orchestrator.Scoped). // One instance per scope (request/operation)
 			WithComponent(
 				orchestrator.NewComponent().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						cache, err := orchestrator.ResolveType[CacheService](container)
-						if err != nil {
-							return err
-						}
+					WithStart(orchestrator.WithStartFunc[CacheService](func(cache CacheService) error {
 						return cache.Connect()
-					}),
+					})),
 			),
 	)
 
 	app.AddFeature(
-		orchestrator.WithServiceInstanceGeneric[LoggerService](
-			&loggerService{},
-			orchestrator.Transient, // New instance every time
-		)(orchestrator.NewFeature("logger")).
+		orchestrator.WithService[LoggerService](&loggerService{})(
+			orchestrator.NewFeature("logger"),
+		).
+			WithLifetime(orchestrator.Transient). // New instance every time
 			WithComponent(
 				orchestrator.NewComponent().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						logger, err := orchestrator.ResolveType[LoggerService](container)
-						if err != nil {
-							return err
-						}
+					WithStart(orchestrator.WithStartFunc[LoggerService](func(logger LoggerService) error {
 						return logger.Connect()
-					}),
+					})),
 			),
 	)
 

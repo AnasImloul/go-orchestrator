@@ -111,61 +111,45 @@ func main() {
 
 	// Add database feature using factory registration
 	app.AddFeature(
-		orchestrator.NewFeature("database").
-			WithService(
-				reflect.TypeOf((*DatabaseService)(nil)).Elem(),
-				func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {
-					// Factory creates a new instance each time (for Transient)
-					return &databaseService{host: "localhost", port: 5432}, nil
-				},
-				orchestrator.Singleton, // Database should be singleton
-			).
+		orchestrator.WithServiceFactory[DatabaseService](
+			func(ctx context.Context, container *orchestrator.Container) (DatabaseService, error) {
+				// Factory creates a new instance each time (for Transient)
+				return &databaseService{host: "localhost", port: 5432}, nil
+			},
+		)(
+			orchestrator.NewFeature("database"),
+		).
+			WithLifetime(orchestrator.Singleton). // Database should be singleton
 			WithComponent(
 				orchestrator.NewComponent().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						db, err := orchestrator.ResolveType[DatabaseService](container)
-						if err != nil {
-							return err
-						}
+					WithStart(orchestrator.WithStartFunc[DatabaseService](func(db DatabaseService) error {
 						return db.Connect()
-					}).
-					WithStop(func(ctx context.Context) error {
-						db, err := orchestrator.ResolveType[DatabaseService](app.Container())
-						if err != nil {
-							return err
-						}
+					})).
+					WithStop(orchestrator.WithStopFuncWithApp[DatabaseService](app, func(db DatabaseService) error {
 						return db.Disconnect()
-					}),
+					})),
 			),
 	)
 
 	// Add cache feature using factory registration
 	app.AddFeature(
-		orchestrator.NewFeature("cache").
-			WithService(
-				reflect.TypeOf((*CacheService)(nil)).Elem(),
-				func(ctx context.Context, container *orchestrator.Container) (interface{}, error) {
-					// Factory creates a new instance each time (for Transient)
-					return &cacheService{host: "localhost", port: 6379}, nil
-				},
-				orchestrator.Transient, // Cache should be transient
-			).
+		orchestrator.WithServiceFactory[CacheService](
+			func(ctx context.Context, container *orchestrator.Container) (CacheService, error) {
+				// Factory creates a new instance each time (for Transient)
+				return &cacheService{host: "localhost", port: 6379}, nil
+			},
+		)(
+			orchestrator.NewFeature("cache"),
+		).
+			WithLifetime(orchestrator.Transient). // Cache should be transient
 			WithComponent(
 				orchestrator.NewComponent().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						cache, err := orchestrator.ResolveType[CacheService](container)
-						if err != nil {
-							return err
-						}
+					WithStart(orchestrator.WithStartFunc[CacheService](func(cache CacheService) error {
 						return cache.Connect()
-					}).
-					WithStop(func(ctx context.Context) error {
-						cache, err := orchestrator.ResolveType[CacheService](app.Container())
-						if err != nil {
-							return err
-						}
+					})).
+					WithStop(orchestrator.WithStopFuncWithApp[CacheService](app, func(cache CacheService) error {
 						return cache.Disconnect()
-					}),
+					})),
 			),
 	)
 

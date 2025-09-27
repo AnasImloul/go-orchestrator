@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/AnasImloul/go-orchestrator"
@@ -41,40 +40,24 @@ func main() {
 
 	// Add a simple feature
 	app.AddFeature(
-		orchestrator.NewFeature("basic-service").
-			WithServiceInstance(
-				reflect.TypeOf((*SimpleService)(nil)),
-				&SimpleService{name: "basic-service"},
-			).
+		orchestrator.WithService[*SimpleService](&SimpleService{name: "basic-service"})(
+			orchestrator.NewFeature("basic-service"),
+		).
+			WithLifetime(orchestrator.Singleton).
 			WithComponent(
 				orchestrator.NewComponent().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						service, err := orchestrator.ResolveType[*SimpleService](container)
-						if err != nil {
-							return err
-						}
+					WithStart(orchestrator.WithStartFunc[*SimpleService](func(service *SimpleService) error {
 						return service.Start()
-					}).
-					WithStop(func(ctx context.Context) error {
-						service, err := orchestrator.ResolveType[*SimpleService](app.Container())
-						if err != nil {
-							return err
-						}
+					})).
+					WithStop(orchestrator.WithStopFuncWithApp[*SimpleService](app, func(service *SimpleService) error {
 						return service.Stop()
-					}).
-					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
-						service, err := orchestrator.ResolveType[*SimpleService](app.Container())
-						if err != nil {
-							return orchestrator.HealthStatus{
-								Status:  "unhealthy",
-								Message: "Failed to resolve service",
-							}
-						}
+					})).
+					WithHealth(orchestrator.WithHealthFunc[*SimpleService](app, func(service *SimpleService) orchestrator.HealthStatus {
 						return orchestrator.HealthStatus{
 							Status:  service.Health(),
 							Message: "Service is running",
 						}
-					}),
+					})),
 			),
 	)
 

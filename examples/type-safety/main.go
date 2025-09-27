@@ -25,9 +25,10 @@ func main() {
 	// This should work - correct interface implementation
 	fmt.Println("Testing correct interface implementation...")
 	app.AddFeature(
-		orchestrator.WithServiceInstanceT[DatabaseService]("database",
-			&databaseService{host: "localhost", port: 5432},
-		),
+		orchestrator.WithService[DatabaseService](&databaseService{host: "localhost", port: 5432})(
+			orchestrator.NewFeature("database"),
+		).
+			WithLifetime(orchestrator.Singleton),
 	)
 	
 	// This should panic - wrong interface implementation
@@ -39,9 +40,10 @@ func main() {
 	}()
 	
 	app.AddFeature(
-		orchestrator.WithServiceInstanceT[DatabaseService]("wrong",
-			&SomeOtherService{}, // This doesn't implement DatabaseService
-		),
+		orchestrator.WithService[DatabaseService](&SomeOtherService{})(
+			orchestrator.NewFeature("wrong"),
+		).
+			WithLifetime(orchestrator.Singleton), // This doesn't implement DatabaseService
 	)
 	
 	fmt.Println("❌ Type safety check failed - this should not be reached!")
