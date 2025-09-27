@@ -47,11 +47,17 @@ func (c *DefaultContainer) Register(serviceType reflect.Type, factory Factory, o
 		option(&opts)
 	}
 
+	// Use lifetime from options if provided, otherwise use default
+	lifetime := c.config.DefaultLifetime
+	if opts.Lifetime != 0 {
+		lifetime = opts.Lifetime
+	}
+	
 	registration := &ServiceRegistration{
 		ServiceType: serviceType,
 		Name:        opts.Name,
 		Factory:     factory,
-		Lifetime:    c.config.DefaultLifetime,
+		Lifetime:    lifetime,
 		Options:     opts,
 	}
 
@@ -322,34 +328,61 @@ func (c *DefaultContainer) resolve(ctx context.Context, serviceType reflect.Type
 		return registration.Instance, nil
 	}
 
-	// Handle singleton lifetime
-	if registration.Lifetime == Singleton {
+	// Handle different lifetimes
+	switch registration.Lifetime {
+	case Singleton:
+		// Check if singleton already exists
 		if instance, exists := c.singletons[serviceType]; exists {
 			success = true
 			return instance, nil
 		}
-	}
-
-	// Create instance using factory
-	instance, err := c.createInstance(ctx, registration, depth)
-	if err != nil {
-		return nil, err
-	}
-
-	// Store singleton
-	if registration.Lifetime == Singleton {
-		c.singletons[serviceType] = instance
-	}
-
-	// Validate instance if enabled
-	if c.config.EnableValidation {
-		if err := c.validateInstance(serviceType, instance); err != nil {
-			return nil, fmt.Errorf("instance validation failed: %w", err)
+		
+		// Create new singleton instance
+		instance, err := c.createInstance(ctx, registration, depth)
+		if err != nil {
+			return nil, err
 		}
+		
+		// Store singleton
+		c.singletons[serviceType] = instance
+		success = true
+		return instance, nil
+		
+	case Transient:
+		// Always create new instance for transient
+		instance, err := c.createInstance(ctx, registration, depth)
+		if err != nil {
+			return nil, err
+		}
+		success = true
+		return instance, nil
+		
+	case Scoped:
+		// For now, scoped behaves like transient since we don't have proper scope management
+		// TODO: Implement proper scope management
+		instance, err := c.createInstance(ctx, registration, depth)
+		if err != nil {
+			return nil, err
+		}
+		success = true
+		return instance, nil
+		
+	default:
+		// Default to singleton behavior
+		if instance, exists := c.singletons[serviceType]; exists {
+			success = true
+			return instance, nil
+		}
+		
+		instance, err := c.createInstance(ctx, registration, depth)
+		if err != nil {
+			return nil, err
+		}
+		
+		c.singletons[serviceType] = instance
+		success = true
+		return instance, nil
 	}
-
-	success = true
-	return instance, nil
 }
 
 // createInstance creates a service instance using the factory

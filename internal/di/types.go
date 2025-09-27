@@ -98,6 +98,7 @@ type ServiceOptions struct {
 	Interceptors []Interceptor
 	Metadata     map[string]interface{}
 	RetryConfig  *RetryConfig
+	Lifetime     ServiceLifetime
 }
 
 // Option represents a service registration option
@@ -107,6 +108,13 @@ type Option func(*ServiceOptions)
 func WithName(name string) Option {
 	return func(o *ServiceOptions) {
 		o.Name = name
+	}
+}
+
+// WithLifetime sets the service lifetime
+func WithLifetime(lifetime ServiceLifetime) Option {
+	return func(o *ServiceOptions) {
+		o.Lifetime = lifetime
 	}
 }
 

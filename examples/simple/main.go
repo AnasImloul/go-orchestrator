@@ -75,9 +75,10 @@ func main() {
 
 	// Add database feature
 	app.AddFeature(
-		orchestrator.WithServiceInstanceT[DatabaseService]("database",
+		orchestrator.WithServiceInstanceGeneric[DatabaseService](
 			&databaseService{host: "localhost", port: 5432},
-		).
+			orchestrator.Singleton,
+		)(orchestrator.NewFeature("database")).
 			WithComponent(
 				orchestrator.NewComponent().
 					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
