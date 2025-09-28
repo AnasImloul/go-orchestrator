@@ -147,6 +147,14 @@ func (tsd *TypedServiceDefinition[T]) WithMetadata(key, value string) *TypedServ
 	return tsd
 }
 
+// WithName sets a custom name for the service definition.
+// This overrides the automatic name inference and allows you to specify
+// a custom service name to avoid conflicts or use more descriptive names.
+func (tsd *TypedServiceDefinition[T]) WithName(name string) *TypedServiceDefinition[T] {
+	tsd.Name = name
+	return tsd
+}
+
 // ToServiceDefinition converts a typed service definition to a regular service definition.
 // This allows typed service definitions to work with the existing registration system.
 func (tsd *TypedServiceDefinition[T]) ToServiceDefinition() *ServiceDefinition {
@@ -692,37 +700,82 @@ func autoDiscoverDependenciesTyped[T any](serviceDef *TypedServiceDefinition[T],
 	}
 }
 
-// inferServiceNameFromType automatically infers the service name from a reflect.Type.
-// It converts interface type names to lowercase service names (e.g., DatabaseService -> "database").
+// inferServiceNameFromType automatically infers a robust service name from a reflect.Type.
+// It creates unique names by including the full package path to avoid conflicts.
+// Examples:
+//   - "github.com/user/pkg1.DatabaseService" -> "github-com-user-pkg1-database"
+//   - "github.com/user/pkg2.DatabaseService" -> "github-com-user-pkg2-database"
 func inferServiceNameFromType(serviceType reflect.Type) string {
 	if serviceType == nil {
 		return "service"
 	}
 
-	// Handle interface types
-	if serviceType.Kind() == reflect.Interface {
-		typeName := serviceType.String()
-		// Remove package prefix if present
-		if lastDot := strings.LastIndex(typeName, "."); lastDot != -1 {
-			typeName = typeName[lastDot+1:]
-		}
-		// Convert to lowercase and remove "Service" suffix if present
-		serviceName := strings.ToLower(typeName)
-		if strings.HasSuffix(serviceName, "service") {
-			serviceName = strings.TrimSuffix(serviceName, "service")
-		}
-		return serviceName
-	}
-
-	// For concrete types, use the type name
 	typeName := serviceType.String()
-	if lastDot := strings.LastIndex(typeName, "."); lastDot != -1 {
-		typeName = typeName[lastDot+1:]
+	
+	// Split package path and type name
+	lastDot := strings.LastIndex(typeName, ".")
+	if lastDot == -1 {
+		// No package path, just use the type name
+		return sanitizeServiceName(typeName)
 	}
+	
+	packagePath := typeName[:lastDot]
+	typeNameOnly := typeName[lastDot+1:]
+	
+	// Convert package path to a safe identifier
+	// Replace dots, slashes, and hyphens with hyphens
+	packageName := strings.ReplaceAll(packagePath, "/", "-")
+	packageName = strings.ReplaceAll(packageName, ".", "-")
+	packageName = strings.ReplaceAll(packageName, "_", "-")
+	packageName = strings.ToLower(packageName)
+	
+	// Clean up the type name
+	typeNameClean := sanitizeServiceName(typeNameOnly)
+	
+	// Combine package and type name
+	if packageName != "" {
+		return packageName + "-" + typeNameClean
+	}
+	return typeNameClean
+}
+
+// sanitizeServiceName cleans up a type name to create a valid service name.
+func sanitizeServiceName(typeName string) string {
+	// Convert to lowercase
 	serviceName := strings.ToLower(typeName)
+	
+	// Remove "Service" suffix if present
 	if strings.HasSuffix(serviceName, "service") {
 		serviceName = strings.TrimSuffix(serviceName, "service")
 	}
+	
+	// Remove "Interface" suffix if present
+	if strings.HasSuffix(serviceName, "interface") {
+		serviceName = strings.TrimSuffix(serviceName, "interface")
+	}
+	
+	// Replace underscores with hyphens
+	serviceName = strings.ReplaceAll(serviceName, "_", "-")
+	
+	// Remove any remaining non-alphanumeric characters except hyphens
+	var result strings.Builder
+	for _, r := range serviceName {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			result.WriteRune(r)
+		}
+	}
+	
+	serviceName = result.String()
+	
+	// Remove leading/trailing hyphens and collapse multiple hyphens
+	serviceName = strings.Trim(serviceName, "-")
+	serviceName = strings.ReplaceAll(serviceName, "--", "-")
+	
+	// Ensure we have a valid name
+	if serviceName == "" {
+		return "service"
+	}
+	
 	return serviceName
 }
 
@@ -756,7 +809,18 @@ func (sd *ServiceDefinition) WithAutoDependencies() *ServiceDefinition {
 
 // WithMetadata adds metadata to the service definition.
 func (sd *ServiceDefinition) WithMetadata(key, value string) *ServiceDefinition {
+	if sd.Metadata == nil {
+		sd.Metadata = make(map[string]string)
+	}
 	sd.Metadata[key] = value
+	return sd
+}
+
+// WithName sets a custom name for the service definition.
+// This overrides the automatic name inference and allows you to specify
+// a custom service name to avoid conflicts or use more descriptive names.
+func (sd *ServiceDefinition) WithName(name string) *ServiceDefinition {
+	sd.Name = name
 	return sd
 }
 
