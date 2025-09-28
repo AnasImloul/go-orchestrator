@@ -64,3 +64,9 @@ examples/*/main.exe
 # Temporary files
 /tmp/
 /temp/
+
+# Example binaries
+/robust-naming
+/robust-naming.exe
+/default-handlers
+/default-handlers.exe
