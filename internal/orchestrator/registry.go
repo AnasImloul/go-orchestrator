@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"time"
 
 	"github.com/AnasImloul/go-orchestrator/internal/di"
@@ -31,7 +32,7 @@ func New() *ServiceRegistry {
 // NewWithConfig creates a new service registry with the specified configuration.
 func NewWithConfig(config Config) *ServiceRegistry {
 	// Create logger
-	logger := logger.NewSlogAdapter(slog.Default())
+	appLogger := logger.NewSlogAdapter(slog.Default())
 
 	// Create DI container
 	diConfig := di.ContainerConfig{
@@ -43,17 +44,40 @@ func NewWithConfig(config Config) *ServiceRegistry {
 		EnableMetrics:       config.EnableMetrics,
 	}
 
-	container := di.NewContainer(diConfig, logger)
+	container := di.NewContainer(diConfig, appLogger)
+
+	// Register the logger in the DI container immediately for automatic injection
+	loggerType := reflect.TypeOf((*logger.Logger)(nil)).Elem()
+	if err := container.RegisterInstance(loggerType, appLogger); err != nil {
+		// If registration fails, log the error but don't fail the entire initialization
+		// This ensures the orchestrator can still work even if logger registration fails
+		appLogger.Error("Failed to register logger in DI container", "error", err)
+	}
+
+	// Also register the logger as a named service for dependency discovery
+	// This allows the logger to be resolved by both type and name
+	loggerName := "logger::Logger" // Use the same naming convention as typeToDependencyName
+	containerWrapper := &Container{container: container}
+	if err := containerWrapper.RegisterNamedInstance(loggerName, loggerType, appLogger); err != nil {
+		appLogger.Error("Failed to register logger as named service", "error", err)
+	}
 
 	// Create lifecycle manager
-	lifecycleManager := lifecycle.NewLifecycleManager(logger)
+	lifecycleManager := lifecycle.NewLifecycleManager(appLogger)
+
+	// Register the logger as a virtual component in the lifecycle manager
+	// This allows dependency validation to pass for services that depend on the logger
+	loggerComponent := &loggerComponent{name: loggerName}
+	if err := lifecycleManager.RegisterComponent(loggerComponent); err != nil {
+		appLogger.Error("Failed to register logger as lifecycle component", "error", err)
+	}
 
 	return &ServiceRegistry{
 		container:        container,
 		lifecycleManager: lifecycleManager,
 		services:         make(map[string]*ServiceDefinition),
 		config:           config,
-		logger:           logger,
+		logger:           appLogger,
 	}
 }
 
@@ -186,4 +210,48 @@ func (sr *ServiceRegistry) Health(ctx context.Context) map[string]HealthStatus {
 // Container returns the DI container.
 func (sr *ServiceRegistry) Container() *Container {
 	return &Container{container: sr.container}
+}
+
+// Logger returns the orchestrator's logger instance.
+// This allows services and other components to use the same logger
+// that the orchestrator uses for consistent logging.
+func (sr *ServiceRegistry) Logger() logger.Logger {
+	return sr.logger
+}
+
+// loggerComponent is a virtual component that represents the logger in the lifecycle manager.
+// It doesn't have any lifecycle methods since the logger doesn't need to be started/stopped.
+type loggerComponent struct {
+	name string
+}
+
+func (c *loggerComponent) Name() string {
+	return c.name
+}
+
+func (c *loggerComponent) Dependencies() []string {
+	return []string{} // Logger has no dependencies
+}
+
+func (c *loggerComponent) Start(ctx context.Context) error {
+	// Logger doesn't need to be started
+	return nil
+}
+
+func (c *loggerComponent) Stop(ctx context.Context) error {
+	// Logger doesn't need to be stopped
+	return nil
+}
+
+func (c *loggerComponent) Health(ctx context.Context) lifecycle.ComponentHealth {
+	// Logger is always healthy
+	return lifecycle.ComponentHealth{
+		Status:    lifecycle.HealthStatusHealthy,
+		Message:   "Logger is healthy",
+		Timestamp: time.Now(),
+	}
+}
+
+func (c *loggerComponent) GetRetryConfig() *lifecycle.RetryConfig {
+	return nil // Logger doesn't need retry configuration
 }
