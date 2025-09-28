@@ -437,14 +437,15 @@ func (sr *ServiceRegistry) Health(ctx context.Context) map[string]HealthStatus {
 	sr.mu.RLock()
 	defer sr.mu.RUnlock()
 
-	states := sr.lifecycleManager.GetAllComponentStates()
+	// Use HealthCheck to actually call the component's Health method
+	componentHealth := sr.lifecycleManager.HealthCheck(ctx)
 	health := make(map[string]HealthStatus)
 
-	for name, state := range states {
+	for name, componentHealth := range componentHealth {
 		health[name] = HealthStatus{
-			Status:  string(state.Health.Status),
-			Message: state.Health.Message,
-			Details: state.Health.Details,
+			Status:  string(componentHealth.Status),
+			Message: componentHealth.Message,
+			Details: componentHealth.Details,
 		}
 	}
 
@@ -523,7 +524,7 @@ func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 	if c.serviceDef.Lifecycle.Health != nil {
 		status := c.serviceDef.Lifecycle.Health(ctx)
 		return lifecycle.ComponentHealth{
-			Status:    lifecycle.HealthStatusHealthy, // Default to healthy
+			Status:    mapHealthStatus(status.Status),
 			Message:   status.Message,
 			Details:   status.Details,
 			Timestamp: time.Now(),
@@ -540,7 +541,7 @@ func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 				if service, ok := instance.(Service); ok {
 					healthStatus := service.Health(ctx)
 					return lifecycle.ComponentHealth{
-						Status:    lifecycle.HealthStatusHealthy, // Default to healthy
+						Status:    mapHealthStatus(healthStatus.Status),
 						Message:   healthStatus.Message,
 						Details:   healthStatus.Details,
 						Timestamp: time.Now(),
@@ -779,6 +780,20 @@ func sanitizeServiceName(typeName string) string {
 	return serviceName
 }
 
+// mapHealthStatus converts a string health status to the lifecycle HealthStatus enum
+func mapHealthStatus(status string) lifecycle.HealthStatus {
+	switch strings.ToLower(status) {
+	case "healthy":
+		return lifecycle.HealthStatusHealthy
+	case "degraded":
+		return lifecycle.HealthStatusDegraded
+	case "unhealthy":
+		return lifecycle.HealthStatusUnhealthy
+	default:
+		return lifecycle.HealthStatusUnknown
+	}
+}
+
 // WithRetryConfig sets the retry configuration for the service definition.
 func (sd *ServiceDefinition) WithRetryConfig(config *lifecycle.RetryConfig) *ServiceDefinition {
 	sd.RetryConfig = config
@@ -858,43 +873,15 @@ func autoDiscoverDependencies(serviceDef *ServiceDefinition, factory interface{}
 }
 
 // typeToDependencyName converts a Go type to a dependency name.
-// This is a simple heuristic - in a real implementation, you might want
-// to use type tags or a more sophisticated mapping.
+// Uses the same robust naming strategy as service registration to ensure consistency.
 func typeToDependencyName(paramType reflect.Type) string {
-	typeName := paramType.String()
-
 	// Remove pointer prefix if present
 	if paramType.Kind() == reflect.Ptr {
-		typeName = paramType.Elem().String()
+		paramType = paramType.Elem()
 	}
 
-	// Convert common patterns to dependency names
-	switch {
-	case strings.Contains(typeName, "DatabaseService"):
-		return "database"
-	case strings.Contains(typeName, "CacheService"):
-		return "cache"
-	case strings.Contains(typeName, "LoggerService"):
-		return "logger"
-	case strings.Contains(typeName, "APIService"):
-		return "api"
-	case strings.Contains(typeName, "MetricsService"):
-		return "metrics"
-	case strings.Contains(typeName, "LoggingService"):
-		return "logging"
-	default:
-		// For unknown types, try to extract a reasonable name
-		// Remove package prefix and "Service" suffix
-		parts := strings.Split(typeName, ".")
-		if len(parts) > 0 {
-			name := parts[len(parts)-1]
-			if strings.HasSuffix(name, "Service") {
-				return strings.ToLower(strings.TrimSuffix(name, "Service"))
-			}
-			return strings.ToLower(name)
-		}
-		return ""
-	}
+	// Use the same naming strategy as service registration
+	return inferServiceNameFromType(paramType)
 }
 
 // callFactoryWithAutoDependencies uses reflection to automatically resolve dependencies
