@@ -15,23 +15,23 @@ import (
 
 // Re-export types from internal package for public API
 type (
-// ServiceRegistry represents the main service registry for dependency injection and lifecycle management.
-// This is the single entry point for the library.
+	// ServiceRegistry represents the main service registry for dependency injection and lifecycle management.
+	// This is the single entry point for the library.
 	ServiceRegistry = orchestrator.ServiceRegistry
 
-// Config holds configuration for the application.
+	// Config holds configuration for the application.
 	Config = orchestrator.Config
 
-// ServiceDefinitionInterface represents the interface for service definitions.
+	// ServiceDefinitionInterface represents the interface for service definitions.
 	ServiceDefinitionInterface = orchestrator.ServiceDefinitionInterface
 
-// ServiceDefinition represents a declarative service configuration.
+	// ServiceDefinition represents a declarative service configuration.
 	ServiceDefinition = orchestrator.ServiceDefinition
 
 	// ServiceConfig represents a service registration configuration.
 	ServiceConfig = orchestrator.ServiceConfig
 
-// Lifetime represents the service lifetime.
+	// Lifetime represents the service lifetime.
 	Lifetime = orchestrator.Lifetime
 
 	// LifecycleConfig represents a service lifecycle configuration.
@@ -60,7 +60,7 @@ type (
 )
 
 // Note: TypedServiceDefinition and TypedServiceConfig are available through the internal package.
-// Use the factory functions (NewServiceSingleton, NewAutoServiceFactory, NewServiceFactory) 
+// Use the factory functions (NewServiceSingleton, NewAutoServiceFactory, NewServiceFactory)
 // which return the appropriate typed definitions from the internal package.
 
 // Re-export constants from internal package

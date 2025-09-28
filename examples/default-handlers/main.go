@@ -175,8 +175,8 @@ func main() {
 	registry.Register(
 		orchestrator.NewServiceSingleton[ServiceWithDependencies](
 			NewServiceWithDependencies([]string{
-				"simple-1", // Reference to the first simple service
-				"simple-2", // Reference to the second simple service
+				"simple-1",     // Reference to the first simple service
+				"simple-2",     // Reference to the second simple service
 				"main::Custom", // This will be the service name for CustomService
 			}),
 		),

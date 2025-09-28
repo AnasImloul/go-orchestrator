@@ -34,20 +34,20 @@ func inferServiceNameFromType(serviceType reflect.Type) string {
 	}
 
 	typeName := serviceType.String()
-	
+
 	// Split package path and type name
 	lastDot := strings.LastIndex(typeName, ".")
 	if lastDot == -1 {
 		// No package path, just use the type name
 		return sanitizeServiceName(typeName)
 	}
-	
+
 	packagePath := typeName[:lastDot]
 	typeNameOnly := typeName[lastDot+1:]
-	
+
 	// Clean up the type name
 	typeNameClean := sanitizeServiceName(typeNameOnly)
-	
+
 	// Use standard format: package::ServiceName
 	if packagePath != "" {
 		return packagePath + "::" + typeNameClean
@@ -60,17 +60,17 @@ func inferServiceNameFromType(serviceType reflect.Type) string {
 func sanitizeServiceName(typeName string) string {
 	// Keep original case for Go naming convention
 	serviceName := typeName
-	
+
 	// Remove "Service" suffix if present (case-insensitive)
 	if strings.HasSuffix(strings.ToLower(serviceName), "service") {
 		serviceName = serviceName[:len(serviceName)-7] // Remove "Service"
 	}
-	
+
 	// Remove "Interface" suffix if present (case-insensitive)
 	if strings.HasSuffix(strings.ToLower(serviceName), "interface") {
 		serviceName = serviceName[:len(serviceName)-9] // Remove "Interface"
 	}
-	
+
 	// Remove any non-alphanumeric characters except underscores
 	var result strings.Builder
 	for _, r := range serviceName {
@@ -78,14 +78,14 @@ func sanitizeServiceName(typeName string) string {
 			result.WriteRune(r)
 		}
 	}
-	
+
 	serviceName = result.String()
-	
+
 	// Ensure we have a valid name
 	if serviceName == "" {
 		return "Service"
 	}
-	
+
 	return serviceName
 }
 

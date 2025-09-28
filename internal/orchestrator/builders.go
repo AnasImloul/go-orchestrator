@@ -222,11 +222,11 @@ func NewAutoServiceFactory[T any](factory interface{}, lifetime Lifetime) *Typed
 		// Use reflection to call the original factory function with resolved dependencies
 		factoryValue := reflect.ValueOf(factory)
 		factoryType := factoryValue.Type()
-		
+
 		// Get the number of parameters the factory function expects
 		numParams := factoryType.NumIn()
 		args := make([]reflect.Value, numParams)
-		
+
 		// Resolve each dependency
 		for i := 0; i < numParams; i++ {
 			paramType := factoryType.In(i)
@@ -237,14 +237,14 @@ func NewAutoServiceFactory[T any](factory interface{}, lifetime Lifetime) *Typed
 			}
 			args[i] = reflect.ValueOf(instance)
 		}
-		
+
 		// Call the factory function
 		results := factoryValue.Call(args)
 		if len(results) != 1 {
 			var zero T
 			return zero, fmt.Errorf("factory function should return exactly one value, got %d", len(results))
 		}
-		
+
 		// Convert the result to type T
 		result := results[0].Interface().(T)
 		return result, nil

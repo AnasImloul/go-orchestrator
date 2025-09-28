@@ -46,14 +46,14 @@ func main() {
 	wrongFactory := func() WrongService {
 		return &wrongService{}
 	}
-	
+
 	// This should panic because WrongService doesn't implement DatabaseService
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Printf("✅ Caught expected panic: %v\n", r)
 		}
 	}()
-	
+
 	fmt.Println("Creating wrong service definition...")
 	wrongDef := orchestrator.NewServiceFactory[DatabaseService](wrongFactory, orchestrator.Singleton)
 	fmt.Println("Registering wrong service definition...")

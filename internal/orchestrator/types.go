@@ -180,7 +180,7 @@ func (b *BaseService) Health(ctx context.Context) HealthStatus {
 	// For now, we'll use a simple approach to avoid recursion
 	// TODO: Implement a proper dependency health checking mechanism
 	// that doesn't cause infinite recursion
-	
+
 	var healthyDeps, degradedDeps, unhealthyDeps, unknownDeps int
 	var messages []string
 
@@ -300,7 +300,7 @@ func (c *serviceComponent) Stop(ctx context.Context) error {
 				if baseService, ok := instance.(interface{ SetServiceName(string) }); ok {
 					baseService.SetServiceName(c.serviceDef.Name)
 				}
-				
+
 				if service, ok := instance.(Service); ok {
 					return service.Stop(ctx)
 				}
@@ -325,7 +325,7 @@ func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 				}
 			}
 		}
-		
+
 		status := c.serviceDef.Lifecycle.Health(ctx)
 		return lifecycle.ComponentHealth{
 			Status:    mapHealthStatus(status.Status),
@@ -349,7 +349,7 @@ func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 				if baseService, ok := instance.(interface{ SetServiceName(string) }); ok {
 					baseService.SetServiceName(c.serviceDef.Name)
 				}
-				
+
 				// Check if service implements Service interface
 				if service, ok := instance.(Service); ok {
 					// Service implements Service interface, call its Health method
@@ -361,10 +361,10 @@ func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 						Timestamp: time.Now(),
 					}
 				}
-				
+
 				// Service doesn't implement Service interface, provide automatic default behavior
 				dependencies := c.serviceDef.Dependencies
-				
+
 				if len(dependencies) == 0 {
 					// No dependencies, return healthy
 					return lifecycle.ComponentHealth{
@@ -378,7 +378,7 @@ func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 					overallStatus := lifecycle.HealthStatusHealthy
 					unhealthyCount := 0
 					degradedCount := 0
-					
+
 					// Check health of each dependency
 					for _, depName := range dependencies {
 						// Get the dependency component state from the lifecycle manager
@@ -388,7 +388,7 @@ func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 							// If the stored health is recent (within last 5 seconds), use it
 							// Otherwise, assume healthy to avoid recursion
 							depHealth := depState.Health
-							
+
 							// Check if the health status is recent (within 5 seconds)
 							if time.Since(depHealth.Timestamp) < 5*time.Second {
 								// Use the stored health status
@@ -402,7 +402,7 @@ func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 								}
 								dependencyHealths[depName] = depHealth
 							}
-							
+
 							// Aggregate health status (unhealthy > degraded > healthy)
 							switch depHealth.Status {
 							case lifecycle.HealthStatusUnhealthy:
@@ -425,7 +425,7 @@ func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 							unhealthyCount++
 						}
 					}
-					
+
 					// Generate appropriate message based on aggregated status
 					var message string
 					switch overallStatus {
@@ -436,10 +436,10 @@ func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 					default:
 						message = fmt.Sprintf("Service healthy (all %d dependencies healthy, auto-detected)", len(dependencies))
 					}
-					
+
 					return lifecycle.ComponentHealth{
-						Status:    overallStatus,
-						Message:   message,
+						Status:  overallStatus,
+						Message: message,
 						Details: map[string]interface{}{
 							"auto_detected": true,
 						},

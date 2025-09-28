@@ -92,7 +92,7 @@ func (sr *ServiceRegistry) Start(ctx context.Context) error {
 					if err != nil {
 						return instance, err
 					}
-					
+
 					// Set registry reference and service name if the instance embeds BaseService
 					if baseService, ok := instance.(interface{ SetRegistry(*ServiceRegistry) }); ok {
 						baseService.SetRegistry(sr)
@@ -104,10 +104,10 @@ func (sr *ServiceRegistry) Start(ctx context.Context) error {
 						}
 						baseService.SetServiceName(serviceName)
 					}
-					
+
 					return instance, nil
 				}
-				
+
 				if service.Name != "" {
 					// Register named service
 					if err := container.RegisterNamed(service.Name, service.Type, wrappedFactory, service.Lifetime); err != nil {
