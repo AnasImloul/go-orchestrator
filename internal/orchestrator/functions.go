@@ -103,7 +103,6 @@ func mapHealthStatus(status HealthStatusType) lifecycle.HealthStatus {
 	}
 }
 
-
 // typeToDependencyName converts a Go type to a dependency name.
 // Uses the same robust naming strategy as service registration to ensure consistency.
 func typeToDependencyName(paramType reflect.Type) string {
@@ -212,4 +211,3 @@ func resolveDependenciesAndCallFactory(ctx context.Context, container *Container
 
 	return results[0].Interface(), nil
 }
-
