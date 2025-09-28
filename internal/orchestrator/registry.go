@@ -219,6 +219,46 @@ func (sr *ServiceRegistry) Logger() logger.Logger {
 	return sr.logger
 }
 
+// RunWithGracefulShutdown provides a convenience method for running the orchestrator
+// with graceful shutdown handling. This is an optional utility - applications can
+// still implement their own signal handling and shutdown logic if needed.
+//
+// The method will:
+// 1. Start the orchestrator
+// 2. Wait for the context to be cancelled (e.g., by signal handling)
+// 3. Perform graceful shutdown with the specified timeout
+//
+// This is useful for simple applications that want standard graceful shutdown behavior
+// without implementing their own signal handling logic.
+func (sr *ServiceRegistry) RunWithGracefulShutdown(ctx context.Context, shutdownTimeout time.Duration) error {
+	sr.logger.Info("Starting orchestrator with graceful shutdown", "shutdown_timeout", shutdownTimeout)
+	
+	// Start the orchestrator
+	if err := sr.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start orchestrator: %w", err)
+	}
+	
+	sr.logger.Info("Orchestrator started successfully, waiting for shutdown signal")
+	
+	// Wait for context cancellation (e.g., from signal handling)
+	<-ctx.Done()
+	
+	sr.logger.Info("Shutdown signal received, starting graceful shutdown")
+	
+	// Create shutdown context with timeout
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	
+	// Perform graceful shutdown
+	if err := sr.Stop(shutdownCtx); err != nil {
+		sr.logger.Error("Graceful shutdown completed with errors", "error", err)
+		return fmt.Errorf("graceful shutdown failed: %w", err)
+	}
+	
+	sr.logger.Info("Graceful shutdown completed successfully")
+	return nil
+}
+
 // loggerComponent is a virtual component that represents the logger in the lifecycle manager.
 // It doesn't have any lifecycle methods since the logger doesn't need to be started/stopped.
 type loggerComponent struct {

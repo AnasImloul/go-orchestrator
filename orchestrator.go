@@ -10,6 +10,9 @@
 package orchestrator
 
 import (
+	"context"
+	"time"
+
 	"github.com/AnasImloul/go-orchestrator/internal/logger"
 	"github.com/AnasImloul/go-orchestrator/internal/orchestrator"
 )
@@ -137,4 +140,19 @@ func NewServiceFactory[T Service](factory interface{}, lifetime Lifetime) *orche
 // T must be an interface type, not a concrete struct.
 func ResolveType[T any](c *Container) (T, error) {
 	return orchestrator.ResolveType[T](c)
+}
+
+// RunWithGracefulShutdown provides a convenience function for running the orchestrator
+// with graceful shutdown handling. This is an optional utility - applications can
+// still implement their own signal handling and shutdown logic if needed.
+//
+// The function will:
+// 1. Start the orchestrator
+// 2. Wait for the context to be cancelled (e.g., by signal handling)
+// 3. Perform graceful shutdown with the specified timeout
+//
+// This is useful for simple applications that want standard graceful shutdown behavior
+// without implementing their own signal handling logic.
+func RunWithGracefulShutdown(sr *ServiceRegistry, ctx context.Context, shutdownTimeout time.Duration) error {
+	return (*orchestrator.ServiceRegistry)(sr).RunWithGracefulShutdown(ctx, shutdownTimeout)
 }
