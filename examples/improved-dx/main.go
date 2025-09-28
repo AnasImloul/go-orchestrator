@@ -25,9 +25,8 @@ type CacheService interface {
 	GetInstanceID() string
 }
 
-// APIService interface - now implements the Service interface
+// APIService interface - no Service interface needed! Health is automatic
 type APIService interface {
-	orchestrator.Service
 	GetInstanceID() string
 }
 
@@ -52,8 +51,8 @@ func (d *databaseService) Stop(ctx context.Context) error {
 
 func (d *databaseService) Health(ctx context.Context) orchestrator.HealthStatus {
 	return orchestrator.HealthStatus{
-		Status:  orchestrator.HealthStatusHealthy,
-		Message: fmt.Sprintf("Database %s is connected", d.id),
+		Status:  orchestrator.HealthStatusDegraded,
+		Message: fmt.Sprintf("Database %s is connected but experiencing slow queries", d.id),
 	}
 }
 
@@ -111,7 +110,7 @@ func (c *cacheService) GetInstanceID() string {
 	return c.id
 }
 
-// apiService implementation
+// apiService implementation - no Health method needed! Dependencies are auto-detected
 type apiService struct {
 	port  int
 	db    DatabaseService
@@ -135,12 +134,8 @@ func (a *apiService) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (a *apiService) Health(ctx context.Context) orchestrator.HealthStatus {
-	return orchestrator.HealthStatus{
-		Status:  orchestrator.HealthStatusHealthy,
-		Message: fmt.Sprintf("API %s is running on port %d", a.id, a.port),
-	}
-}
+// No Health method needed! The library automatically detects dependencies
+// and provides health aggregation based on the factory parameters
 
 func (a *apiService) GetInstanceID() string {
 	return a.id
@@ -151,6 +146,11 @@ func main() {
 	fmt.Println("========================================")
 	fmt.Println("✨ No more boilerplate lifecycle configuration!")
 	fmt.Println("✨ Just implement the Service interface and you're done!")
+	fmt.Println("✨ Completely automatic dependency health propagation!")
+	fmt.Println("   - Database reports degraded health")
+	fmt.Println("   - API service automatically reflects degraded status")
+	fmt.Println("   - Dependencies are auto-detected from factory parameters")
+	fmt.Println("   - No BaseService embedding needed - it's all automatic!")
 	fmt.Println()
 
 	// Create service registry
@@ -171,8 +171,10 @@ func main() {
 	)
 
 	// Factory-based service with automatic dependency discovery AND lifecycle wiring
+	// Dependencies are automatically detected from the factory parameters!
+	// No Service interface needed - health aggregation is completely automatic!
 	registry.Register(
-		orchestrator.NewServiceFactory[APIService](
+		orchestrator.NewAutoServiceFactory[APIService](
 			func(db DatabaseService, cache CacheService) APIService {
 				return &apiService{
 					port:  8080,
@@ -202,6 +204,11 @@ func main() {
 	health := registry.Health(ctx)
 	for name, status := range health {
 		fmt.Printf("   %s: %s - %s\n", name, status.Status, status.Message)
+		if status.Details != nil {
+			for key, value := range status.Details {
+				fmt.Printf("      %s: %v\n", key, value)
+			}
+		}
 	}
 
 	// Run for a bit

@@ -301,17 +301,24 @@ type Service interface {
 // Services can embed this struct to get sensible defaults without implementing
 // all methods manually.
 type BaseService struct {
-	// Dependencies can be set to specify which services this service depends on
-	// for health checking. If nil, health will default to healthy.
+	// Dependencies can be set manually to specify which services this service depends on
+	// for health checking. If nil, dependencies will be auto-detected from service registration.
 	Dependencies []string
 	// Registry is set automatically by the orchestrator to enable dependency health checking
 	registry *ServiceRegistry
+	// serviceName is set automatically to identify this service for dependency detection
+	serviceName string
 }
 
 // SetRegistry is called by the orchestrator to provide access to the service registry.
 // This enables dependency health checking in the default Health implementation.
 func (b *BaseService) SetRegistry(registry *ServiceRegistry) {
 	b.registry = registry
+}
+
+// SetServiceName is called by the orchestrator to set the service name for dependency detection.
+func (b *BaseService) SetServiceName(serviceName string) {
+	b.serviceName = serviceName
 }
 
 // Start provides a default no-op implementation for service startup.
@@ -329,23 +336,32 @@ func (b *BaseService) Stop(ctx context.Context) error {
 }
 
 // Health provides a default implementation that aggregates dependency health.
-// If no dependencies are specified, returns healthy status.
+// If no dependencies are specified, they are auto-detected from service registration.
 // If dependencies are specified, checks their health and aggregates the result.
 // Override this method in your service if you need custom health logic.
 func (b *BaseService) Health(ctx context.Context) HealthStatus {
-	// If no dependencies specified, default to healthy
-	if len(b.Dependencies) == 0 {
-		return HealthStatus{
-			Status:  HealthStatusHealthy,
-			Message: "Service is healthy (no dependencies)",
-		}
-	}
-
 	// If no registry access, can't check dependencies
 	if b.registry == nil {
 		return HealthStatus{
 			Status:  HealthStatusUnknown,
 			Message: "Cannot check dependency health (no registry access)",
+		}
+	}
+
+	// Auto-detect dependencies if not manually specified
+	dependencies := b.Dependencies
+	if len(dependencies) == 0 && b.serviceName != "" {
+		// Get dependencies from the service registry
+		if serviceDef, exists := b.registry.services[b.serviceName]; exists {
+			dependencies = serviceDef.Dependencies
+		}
+	}
+
+	// If still no dependencies, default to healthy
+	if len(dependencies) == 0 {
+		return HealthStatus{
+			Status:  HealthStatusHealthy,
+			Message: "Service is healthy (no dependencies)",
 		}
 	}
 
@@ -359,7 +375,7 @@ func (b *BaseService) Health(ctx context.Context) HealthStatus {
 	// Since we can't safely check dependency health without causing recursion,
 	// we'll assume all dependencies are healthy for now
 	// This is a limitation that could be addressed with a more sophisticated approach
-	for _, depName := range b.Dependencies {
+	for _, depName := range dependencies {
 		healthyDeps++
 		messages = append(messages, fmt.Sprintf("%s assumed healthy (recursion prevention)", depName))
 	}
@@ -395,7 +411,8 @@ func (b *BaseService) Health(ctx context.Context) HealthStatus {
 			"degraded_dependencies":  degradedDeps,
 			"unhealthy_dependencies": unhealthyDeps,
 			"unknown_dependencies":   unknownDeps,
-			"total_dependencies":     len(b.Dependencies),
+			"total_dependencies":     len(dependencies),
+			"auto_detected":          len(b.Dependencies) == 0,
 		},
 	}
 }
@@ -523,16 +540,23 @@ func (sr *ServiceRegistry) Start(ctx context.Context) error {
 		for _, service := range serviceDef.Services {
 			// All services now use factories for consistent behavior
 			if service.Factory != nil {
-				// Create a wrapper factory that sets the registry reference for BaseService instances
+				// Create a wrapper factory that sets the registry reference and service name for BaseService instances
 				wrappedFactory := func(ctx context.Context, container *Container) (interface{}, error) {
 					instance, err := service.Factory(ctx, container)
 					if err != nil {
 						return instance, err
 					}
 					
-					// Set registry reference if the instance embeds BaseService
+					// Set registry reference and service name if the instance embeds BaseService
 					if baseService, ok := instance.(interface{ SetRegistry(*ServiceRegistry) }); ok {
 						baseService.SetRegistry(sr)
+					}
+					if baseService, ok := instance.(interface{ SetServiceName(string) }); ok {
+						serviceName := service.Name
+						if serviceName == "" {
+							serviceName = service.Type.String()
+						}
+						baseService.SetServiceName(serviceName)
 					}
 					
 					return instance, nil
@@ -672,9 +696,12 @@ func (c *serviceComponent) Stop(ctx context.Context) error {
 		if service.Factory != nil {
 			instance, err := service.Factory(ctx, container)
 			if err == nil {
-				// Set registry reference if the instance embeds BaseService
+				// Set registry reference and service name if the instance embeds BaseService
 				if baseService, ok := instance.(interface{ SetRegistry(*ServiceRegistry) }); ok {
 					baseService.SetRegistry(c.serviceRegistry)
+				}
+				if baseService, ok := instance.(interface{ SetServiceName(string) }); ok {
+					baseService.SetServiceName(c.serviceDef.Name)
 				}
 				
 				if service, ok := instance.(Service); ok {
@@ -718,17 +745,49 @@ func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 		if service.Factory != nil {
 			instance, err := service.Factory(ctx, container)
 			if err == nil {
-				// Set registry reference if the instance embeds BaseService
+				// Set registry reference and service name if the instance embeds BaseService
 				if baseService, ok := instance.(interface{ SetRegistry(*ServiceRegistry) }); ok {
 					baseService.SetRegistry(c.serviceRegistry)
 				}
+				if baseService, ok := instance.(interface{ SetServiceName(string) }); ok {
+					baseService.SetServiceName(c.serviceDef.Name)
+				}
 				
+				// Check if service implements Service interface
 				if service, ok := instance.(Service); ok {
+					// Service implements Service interface, call its Health method
 					healthStatus := service.Health(ctx)
 					return lifecycle.ComponentHealth{
 						Status:    mapHealthStatus(healthStatus.Status),
 						Message:   healthStatus.Message,
 						Details:   healthStatus.Details,
+						Timestamp: time.Now(),
+					}
+				}
+				
+				// Service doesn't implement Service interface, provide automatic default behavior
+				dependencies := c.serviceDef.Dependencies
+				
+				if len(dependencies) == 0 {
+					// No dependencies, return healthy
+					return lifecycle.ComponentHealth{
+						Status:    lifecycle.HealthStatusHealthy,
+						Message:   "Service is healthy (no dependencies, auto-detected)",
+						Timestamp: time.Now(),
+					}
+				} else {
+					// Has dependencies, provide dependency health aggregation
+					// For now, assume all dependencies are healthy to avoid recursion
+					// TODO: Implement proper dependency health checking without recursion
+					return lifecycle.ComponentHealth{
+						Status:    lifecycle.HealthStatusHealthy,
+						Message:   fmt.Sprintf("Service healthy (all %d dependencies assumed healthy, auto-detected)", len(dependencies)),
+						Details: map[string]interface{}{
+							"auto_detected":          true,
+							"total_dependencies":     len(dependencies),
+							"dependencies":           dependencies,
+							"note":                   "Dependency health aggregation (recursion prevention)",
+						},
 						Timestamp: time.Now(),
 					}
 				}
@@ -785,6 +844,91 @@ func NewServiceSingleton[T Service](instance T) *TypedServiceDefinition[T] {
 			},
 			Health: func(ctx context.Context) HealthStatus {
 				return instance.Health(ctx)
+			},
+		},
+	}
+
+	return serviceDef
+}
+
+// NewAutoServiceFactory creates a new service definition with automatic dependency discovery and lifecycle management.
+// The factory function can return any type T - it doesn't need to implement the Service interface.
+// Dependencies are automatically discovered from the factory function parameters.
+// Lifecycle methods are automatically provided with sensible defaults.
+func NewAutoServiceFactory[T any](factory interface{}, lifetime Lifetime) *TypedServiceDefinition[T] {
+	// Get the interface type T
+	interfaceType := reflect.TypeOf((*T)(nil)).Elem()
+	serviceName := inferServiceNameFromType(interfaceType)
+
+	// Convert the factory function to the expected signature
+	factoryFunc := func(ctx context.Context, container *Container) (T, error) {
+		// Use reflection to call the original factory function with resolved dependencies
+		factoryValue := reflect.ValueOf(factory)
+		factoryType := factoryValue.Type()
+		
+		// Get the number of parameters the factory function expects
+		numParams := factoryType.NumIn()
+		args := make([]reflect.Value, numParams)
+		
+		// Resolve each dependency
+		for i := 0; i < numParams; i++ {
+			paramType := factoryType.In(i)
+			instance, err := container.Resolve(paramType)
+			if err != nil {
+				var zero T
+				return zero, fmt.Errorf("failed to resolve dependency %d (%s): %w", i, paramType.String(), err)
+			}
+			args[i] = reflect.ValueOf(instance)
+		}
+		
+		// Call the factory function
+		results := factoryValue.Call(args)
+		if len(results) != 1 {
+			var zero T
+			return zero, fmt.Errorf("factory function should return exactly one value, got %d", len(results))
+		}
+		
+		// Convert the result to type T
+		result := results[0].Interface().(T)
+		return result, nil
+	}
+
+	// Create typed service definition with automatic lifecycle wiring
+	serviceDef := &TypedServiceDefinition[T]{
+		Name: serviceName,
+		Service: TypedServiceConfig[T]{
+			Type:     interfaceType,
+			Factory:  factoryFunc,
+			Lifetime: lifetime,
+		},
+		// Automatically wire lifecycle methods with defaults
+		Lifecycle: LifecycleConfig{
+			Start: func(ctx context.Context, container *Container) error {
+				// Try to call Start method if it exists
+				instance, err := container.Resolve(interfaceType)
+				if err != nil {
+					return err
+				}
+				if startable, ok := instance.(interface{ Start(context.Context) error }); ok {
+					return startable.Start(ctx)
+				}
+				// No Start method, default to no-op
+				return nil
+			},
+			Stop: func(ctx context.Context) error {
+				// Try to call Stop method if it exists
+				// We'll use the serviceComponent's container instead of creating a new one
+				// This will be handled by the serviceComponent.Stop method
+				return nil
+			},
+			Health: func(ctx context.Context) HealthStatus {
+				// Try to call Health method if it exists
+				// We'll use the serviceComponent's container instead of creating a new one
+				// This will be handled by the serviceComponent.Health method
+				return HealthStatus{
+					Status:  HealthStatusUnknown,
+					Message: "Using automatic health detection",
+				}
 			},
 		},
 	}
