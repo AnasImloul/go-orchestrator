@@ -208,6 +208,93 @@ func NewServiceSingleton[T Service](instance T) *TypedServiceDefinition[T] {
 	return serviceDef
 }
 
+// NewStructSingleton creates a new service definition for a struct instance.
+// The struct instance will be registered directly without requiring the Service interface.
+// This is useful for simple structs that don't need lifecycle management.
+func NewStructSingleton[T any](instance T) *TypedServiceDefinition[T] {
+	// Get the struct type T
+	structType := reflect.TypeOf(instance)
+	serviceName := inferServiceNameFromType(structType)
+
+	factory := func(ctx context.Context, container *Container) (T, error) {
+		return instance, nil
+	}
+
+	// Create typed service definition without lifecycle management
+	serviceDef := &TypedServiceDefinition[T]{
+		Name: serviceName,
+		Service: TypedServiceConfig[T]{
+			Type:     structType,
+			Factory:  factory,
+			Lifetime: Singleton,
+		},
+		// No lifecycle methods - structs are registered as-is
+		Lifecycle: LifecycleConfig{},
+	}
+
+	return serviceDef
+}
+
+// NewStructFactory creates a new service definition for a struct with a factory function.
+// The factory function can return any struct type T.
+// Dependencies are automatically discovered from the factory function parameters.
+// No lifecycle management is provided - structs are registered as-is.
+func NewStructFactory[T any](factory interface{}, lifetime Lifetime) *TypedServiceDefinition[T] {
+	// Get the struct type T
+	structType := reflect.TypeOf((*T)(nil)).Elem()
+	serviceName := inferServiceNameFromType(structType)
+
+	// Convert the factory function to the expected signature
+	factoryFunc := func(ctx context.Context, container *Container) (T, error) {
+		// Use reflection to call the original factory function with resolved dependencies
+		factoryValue := reflect.ValueOf(factory)
+		factoryType := factoryValue.Type()
+
+		// Get the number of parameters the factory function expects
+		numParams := factoryType.NumIn()
+		args := make([]reflect.Value, numParams)
+
+		// Resolve each dependency
+		for i := 0; i < numParams; i++ {
+			paramType := factoryType.In(i)
+			instance, err := container.Resolve(paramType)
+			if err != nil {
+				var zero T
+				return zero, fmt.Errorf("failed to resolve dependency %d (%s): %w", i, paramType.String(), err)
+			}
+			args[i] = reflect.ValueOf(instance)
+		}
+
+		// Call the factory function
+		results := factoryValue.Call(args)
+		if len(results) != 1 {
+			var zero T
+			return zero, fmt.Errorf("factory function should return exactly one value, got %d", len(results))
+		}
+
+		// Convert the result to type T
+		result := results[0].Interface().(T)
+		return result, nil
+	}
+
+	// Create typed service definition without lifecycle management
+	serviceDef := &TypedServiceDefinition[T]{
+		Name: serviceName,
+		Service: TypedServiceConfig[T]{
+			Type:     structType,
+			Factory:  factoryFunc,
+			Lifetime: lifetime,
+		},
+		// No lifecycle methods - structs are registered as-is
+		Lifecycle: LifecycleConfig{},
+	}
+
+	// Automatically discover and add dependencies based on factory parameters
+	autoDiscoverDependenciesTyped(serviceDef, factory)
+
+	return serviceDef
+}
+
 // NewAutoServiceFactory creates a new service definition with automatic dependency discovery and lifecycle management.
 // The factory function can return any type T - it doesn't need to implement the Service interface.
 // Dependencies are automatically discovered from the factory function parameters.

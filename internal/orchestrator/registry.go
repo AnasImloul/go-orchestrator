@@ -149,15 +149,40 @@ func (sr *ServiceRegistry) Start(ctx context.Context) error {
 		}
 	}
 
-	// Register all service definitions as lifecycle components
+	// Register only service definitions with lifecycle methods as lifecycle components
+	// Structs without lifecycle methods are only registered in the DI container
 	for name, serviceDef := range sr.services {
-		component := &serviceComponent{
-			serviceDef:      serviceDef,
-			serviceRegistry: sr,
+		// Check if this service definition has any lifecycle methods
+		hasLifecycle := serviceDef.Lifecycle.Start != nil || 
+						serviceDef.Lifecycle.Stop != nil || 
+						serviceDef.Lifecycle.Health != nil
+		
+		// Also check if any of the services implement the Service interface
+		implementsService := false
+		for _, service := range serviceDef.Services {
+			if service.Factory != nil {
+				// Check if the service type implements the Service interface
+				serviceType := service.Type
+				if serviceType.Implements(reflect.TypeOf((*Service)(nil)).Elem()) {
+					implementsService = true
+					break
+				}
+			}
 		}
+		
+		// Only register as lifecycle component if it has lifecycle methods or implements Service interface
+		if hasLifecycle || implementsService {
+			component := &serviceComponent{
+				serviceDef:      serviceDef,
+				serviceRegistry: sr,
+			}
 
-		if err := sr.lifecycleManager.RegisterComponent(component); err != nil {
-			return fmt.Errorf("failed to register lifecycle component %s: %w", name, err)
+			if err := sr.lifecycleManager.RegisterComponent(component); err != nil {
+				return fmt.Errorf("failed to register lifecycle component %s: %w", name, err)
+			}
+		} else {
+			// For structs without lifecycle, just log that they're registered in DI container only
+			sr.logger.Info("Struct registered in DI container only (no lifecycle)", "name", name)
 		}
 	}
 

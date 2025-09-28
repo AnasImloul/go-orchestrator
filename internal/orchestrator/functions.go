@@ -10,6 +10,7 @@ import (
 )
 
 // autoDiscoverDependenciesTyped automatically discovers dependencies from factory function parameters for typed service definitions.
+// Only adds dependencies that are likely to be lifecycle components (interfaces that implement Service).
 func autoDiscoverDependenciesTyped[T any](serviceDef *TypedServiceDefinition[T], factory interface{}) {
 	factoryValue := reflect.ValueOf(factory)
 	factoryType := factoryValue.Type()
@@ -17,9 +18,37 @@ func autoDiscoverDependenciesTyped[T any](serviceDef *TypedServiceDefinition[T],
 	// Get parameter types from the factory function
 	for i := 0; i < factoryType.NumIn(); i++ {
 		paramType := factoryType.In(i)
-		dependencyName := typeToDependencyName(paramType)
-		serviceDef.Dependencies = append(serviceDef.Dependencies, dependencyName)
+		
+		// Only add as lifecycle dependency if it's likely to be a service
+		// Check if it's an interface type or if it implements the Service interface
+		if isLikelyService(paramType) {
+			dependencyName := typeToDependencyName(paramType)
+			serviceDef.Dependencies = append(serviceDef.Dependencies, dependencyName)
+		}
+		// Struct types are handled by DI container resolution, not lifecycle dependencies
 	}
+}
+
+// isLikelyService determines if a type is likely to be a service that needs lifecycle management
+func isLikelyService(paramType reflect.Type) bool {
+	// Remove pointer if present
+	if paramType.Kind() == reflect.Ptr {
+		paramType = paramType.Elem()
+	}
+	
+	// If it's an interface, it's likely a service
+	if paramType.Kind() == reflect.Interface {
+		return true
+	}
+	
+	// If it's a struct, check if it implements the Service interface
+	if paramType.Kind() == reflect.Struct {
+		serviceInterface := reflect.TypeOf((*Service)(nil)).Elem()
+		return paramType.Implements(serviceInterface)
+	}
+	
+	// For other types (like logger.Logger), don't treat as lifecycle dependency
+	return false
 }
 
 // inferServiceNameFromType automatically infers a robust service name from a reflect.Type.

@@ -293,7 +293,7 @@ app.AddFeature(
 The new `NewFeatureWithAutoFactory` provides:
 
 - **Zero Boilerplate**: No manual dependency resolution OR declaration needed
-- **Type-Safe**: Compile-time verification of dependency types
+i- **Type-Safe**: Compile-time verification of dependency types
 - **Reflection-Based**: Automatic parameter scanning and injection
 - **Error Handling**: Clear error messages for missing dependencies
 - **Clean Syntax**: Factory functions only need to declare their dependencies
@@ -588,3 +588,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 # Test commit for avatar verification
+
