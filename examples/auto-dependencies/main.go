@@ -104,17 +104,15 @@ func main() {
 
 	// Register database service definition with instance
 	registry.Register(
-		orchestrator.NewServiceWithInstance("database",
-			DatabaseService(&databaseService{host: "localhost", port: 5432, id: "db-001"}),
-			orchestrator.Singleton,
+		orchestrator.NewServiceSingleton[DatabaseService](
+			&databaseService{host: "localhost", port: 5432, id: "db-001"},
 		),
 	)
 
 	// Register cache service definition with instance
 	registry.Register(
-		orchestrator.NewServiceWithInstance("cache",
-			CacheService(&cacheService{host: "localhost", port: 6379, id: "cache-001"}),
-			orchestrator.Singleton,
+		orchestrator.NewServiceSingleton[CacheService](
+			&cacheService{host: "localhost", port: 6379, id: "cache-001"},
 		),
 	)
 
@@ -122,7 +120,7 @@ func main() {
 	// The factory function only takes the dependencies as parameters
 	// Dependencies are automatically discovered from the function parameters!
 	registry.Register(
-		orchestrator.NewServiceWithAutoFactory[APIService]("api",
+		orchestrator.NewServiceFactory[APIService](
 			func(db DatabaseService, cache CacheService) APIService {
 				return &apiService{
 					port:  8080,

@@ -44,6 +44,18 @@ cmd/example/example.exe
 examples/*/main
 examples/*/main.exe
 
+# Any binaries created in the root directory
+/example
+/example.exe
+/best-syntax
+/best-syntax.exe
+/auto-dependencies
+/auto-dependencies.exe
+
+# Any other executable binaries
+/main
+/main.exe
+
 # Logs
 *.log
 

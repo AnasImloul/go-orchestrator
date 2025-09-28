@@ -116,56 +116,85 @@ func main() {
 	// Create service registry with default configuration
 	registry := orchestrator.New()
 
-	// Method 1: Ultra-clean syntax using NewServiceWithInstance (factory-based)
+	// Method 1: Ultra-clean syntax using NewServiceSingleton (automatic name inference)
 	registry.Register(
-		orchestrator.WithLifecycleFor[DatabaseService](
-			orchestrator.NewServiceWithInstance("database", DatabaseService(&databaseService{host: "localhost", port: 5432}), orchestrator.Singleton),
-			registry,
+		orchestrator.NewServiceSingleton[DatabaseService](
+			&databaseService{host: "localhost", port: 5432},
 		).
-			WithStartFor(func(db DatabaseService) error { return db.Connect() }).
-			WithStopFor(func(db DatabaseService) error { return db.Disconnect() }).
-			Build(),
+			WithLifecycle(
+				orchestrator.NewLifecycle().
+					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
+						db, err := orchestrator.ResolveType[DatabaseService](container)
+						if err != nil {
+							return err
+						}
+						return db.Connect()
+					}).
+					WithStop(func(ctx context.Context) error {
+						db, err := orchestrator.ResolveType[DatabaseService](registry.Container())
+						if err != nil {
+							return err
+						}
+						return db.Disconnect()
+					}),
+			),
 	)
 
-	// Method 2: Clean syntax using NewServiceWithInstance with Transient lifetime (factory-based)
+	// Method 2: Clean syntax using NewServiceSingleton with Transient lifetime
 	registry.Register(
-		orchestrator.WithLifecycleFor[CacheService](
-			orchestrator.NewServiceWithInstance("cache", CacheService(&cacheService{host: "localhost", port: 6379}), orchestrator.Transient),
-			registry,
+		orchestrator.NewServiceSingleton[CacheService](
+			&cacheService{host: "localhost", port: 6379},
 		).
-			WithStartFor(func(cache CacheService) error { return cache.Connect() }).
-			WithStopFor(func(cache CacheService) error { return cache.Disconnect() }).
-			Build(),
+			WithLifecycle(
+				orchestrator.NewLifecycle().
+					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
+						cache, err := orchestrator.ResolveType[CacheService](container)
+						if err != nil {
+							return err
+						}
+						return cache.Connect()
+					}).
+					WithStop(func(ctx context.Context) error {
+						cache, err := orchestrator.ResolveType[CacheService](registry.Container())
+						if err != nil {
+							return err
+						}
+						return cache.Disconnect()
+					}),
+			),
 	)
 
-	// Method 3: Factory-based service with dependencies using NewServiceWithFactory
+	// Method 3: Factory-based service with automatic dependency discovery
 	registry.Register(
-		orchestrator.WithLifecycleFor[APIService](
-			orchestrator.NewServiceWithFactory("api",
-				func(ctx context.Context, container *orchestrator.Container) (APIService, error) {
-					db, err := orchestrator.ResolveType[DatabaseService](container)
-					if err != nil {
-						return nil, err
-					}
-					cache, err := orchestrator.ResolveType[CacheService](container)
-					if err != nil {
-						return nil, err
-					}
-					return &apiService{port: 8080, db: db, cache: cache}, nil
-				},
-				orchestrator.Singleton,
-			).WithDependencies("database", "cache"),
-			registry,
+		orchestrator.NewServiceFactory[APIService](
+			func(db DatabaseService, cache CacheService) APIService {
+				return &apiService{port: 8080, db: db, cache: cache}
+			},
+			orchestrator.Singleton,
 		).
-			WithStartFor(func(api APIService) error { return api.Start() }).
-			WithStopFor(func(api APIService) error { return api.Stop() }).
-			WithHealthFor(func(api APIService) orchestrator.HealthStatus {
-				return orchestrator.HealthStatus{
-					Status:  api.Health(),
-					Message: "API server is running",
-				}
-			}).
-			Build(),
+			WithLifecycle(
+				orchestrator.NewLifecycle().
+					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
+						api, err := orchestrator.ResolveType[APIService](container)
+						if err != nil {
+							return err
+						}
+						return api.Start()
+					}).
+					WithStop(func(ctx context.Context) error {
+						api, err := orchestrator.ResolveType[APIService](registry.Container())
+						if err != nil {
+							return err
+						}
+						return api.Stop()
+					}).
+					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
+						return orchestrator.HealthStatus{
+							Status:  "healthy",
+							Message: "API server is running",
+						}
+					}),
+			),
 	)
 
 	// Start the service registry

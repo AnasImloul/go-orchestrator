@@ -644,19 +644,80 @@ func NewServiceWithAutoFactory[T any](name string, factory interface{}, lifetime
 	return serviceDef
 }
 
-// NewServiceWithInstance creates a new service definition with a service instance by wrapping it in a factory.
-// This is the recommended way to register simple services without dependencies.
-func NewServiceWithInstance[T any](name string, instance T, lifetime Lifetime) *ServiceDefinition {
-	// Create a factory that returns the instance
+// NewServiceSingleton creates a new service definition with automatic name inference from interface type.
+// The service name is automatically derived from the interface type name (e.g., DatabaseService -> "database").
+func NewServiceSingleton[T any](instance T) *ServiceDefinition {
+	// Get the type name from the instance
+	serviceType := reflect.TypeOf(instance)
+	serviceName := inferServiceNameFromType(serviceType)
+	
 	factory := func(ctx context.Context, container *Container) (T, error) {
-		// For Transient services, create a new instance by cloning
-		if lifetime == Transient {
-			return cloneInstance(instance).(T), nil
-		}
-		// For Singleton and Scoped, return the same instance
 		return instance, nil
 	}
-	return NewServiceWithFactory(name, factory, lifetime)
+	return NewServiceWithFactory(serviceName, factory, Singleton)
+}
+
+// NewServiceFactory creates a new service definition with automatic name inference and dependency discovery.
+// The service name is automatically derived from the interface type name.
+// Dependencies are automatically discovered from the factory function parameters.
+func NewServiceFactory[T any](factory interface{}, lifetime Lifetime) *ServiceDefinition {
+	// Get the type name from the factory return type
+	factoryValue := reflect.ValueOf(factory)
+	factoryType := factoryValue.Type()
+	
+	// Get the return type (should be T)
+	if factoryType.NumOut() == 0 {
+		panic("factory function must return a value")
+	}
+	returnType := factoryType.Out(0)
+	serviceName := inferServiceNameFromType(returnType)
+	
+	// Create a wrapper factory that handles automatic dependency injection
+	wrapperFactory := func(ctx context.Context, container *Container) (T, error) {
+		return callFactoryWithAutoDependencies[T](ctx, container, factory)
+	}
+	
+	// Create the service definition with the wrapper factory
+	serviceDef := NewServiceWithFactory(serviceName, wrapperFactory, lifetime)
+	
+	// Automatically discover and add dependencies based on factory parameters
+	autoDiscoverDependencies(serviceDef, factory)
+	
+	return serviceDef
+}
+
+// inferServiceNameFromType automatically infers the service name from a reflect.Type.
+// It converts interface type names to lowercase service names (e.g., DatabaseService -> "database").
+func inferServiceNameFromType(serviceType reflect.Type) string {
+	if serviceType == nil {
+		return "service"
+	}
+	
+	// Handle interface types
+	if serviceType.Kind() == reflect.Interface {
+		typeName := serviceType.String()
+		// Remove package prefix if present
+		if lastDot := strings.LastIndex(typeName, "."); lastDot != -1 {
+			typeName = typeName[lastDot+1:]
+		}
+		// Convert to lowercase and remove "Service" suffix if present
+		serviceName := strings.ToLower(typeName)
+		if strings.HasSuffix(serviceName, "service") {
+			serviceName = strings.TrimSuffix(serviceName, "service")
+		}
+		return serviceName
+	}
+	
+	// For concrete types, use the type name
+	typeName := serviceType.String()
+	if lastDot := strings.LastIndex(typeName, "."); lastDot != -1 {
+		typeName = typeName[lastDot+1:]
+	}
+	serviceName := strings.ToLower(typeName)
+	if strings.HasSuffix(serviceName, "service") {
+		serviceName = strings.TrimSuffix(serviceName, "service")
+	}
+	return serviceName
 }
 
 // WithRetryConfig sets the retry configuration for the service definition.
