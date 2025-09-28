@@ -10,6 +10,7 @@
 package orchestrator
 
 import (
+	"github.com/AnasImloul/go-orchestrator/internal/logger"
 	"github.com/AnasImloul/go-orchestrator/internal/orchestrator"
 )
 
@@ -57,6 +58,9 @@ type (
 
 	// Container provides a simplified interface to the DI container.
 	Container = orchestrator.Container
+
+	// Logger represents the logger interface used by the orchestrator.
+	Logger = logger.Logger
 )
 
 // Note: TypedServiceDefinition and TypedServiceConfig are available through the internal package.
