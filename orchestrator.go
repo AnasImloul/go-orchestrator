@@ -59,11 +59,9 @@ type (
 	Container = orchestrator.Container
 )
 
-// TypedServiceDefinition represents a type-safe service definition.
-type TypedServiceDefinition[T any] = orchestrator.TypedServiceDefinition[T]
-
-// TypedServiceConfig represents a type-safe service registration configuration.
-type TypedServiceConfig[T any] = orchestrator.TypedServiceConfig[T]
+// Note: TypedServiceDefinition and TypedServiceConfig are available through the internal package.
+// Use the factory functions (NewServiceSingleton, NewAutoServiceFactory, NewServiceFactory) 
+// which return the appropriate typed definitions from the internal package.
 
 // Re-export constants from internal package
 const (
@@ -111,7 +109,7 @@ func NewLifecycle() *LifecycleBuilder {
 // NewServiceSingleton creates a new service definition with automatic lifecycle management.
 // The service instance MUST implement the Service interface.
 // Lifecycle methods (Start, Stop, Health) are automatically wired.
-func NewServiceSingleton[T Service](instance T) *TypedServiceDefinition[T] {
+func NewServiceSingleton[T Service](instance T) *orchestrator.TypedServiceDefinition[T] {
 	return orchestrator.NewServiceSingleton(instance)
 }
 
@@ -119,7 +117,7 @@ func NewServiceSingleton[T Service](instance T) *TypedServiceDefinition[T] {
 // The factory function can return any type T - it doesn't need to implement the Service interface.
 // Dependencies are automatically discovered from the factory function parameters.
 // Lifecycle methods are automatically provided with sensible defaults.
-func NewAutoServiceFactory[T any](factory interface{}, lifetime Lifetime) *TypedServiceDefinition[T] {
+func NewAutoServiceFactory[T any](factory interface{}, lifetime Lifetime) *orchestrator.TypedServiceDefinition[T] {
 	return orchestrator.NewAutoServiceFactory[T](factory, lifetime)
 }
 
@@ -127,7 +125,7 @@ func NewAutoServiceFactory[T any](factory interface{}, lifetime Lifetime) *Typed
 // The factory function must return a type T that implements the Service interface.
 // Dependencies are automatically discovered from the factory function parameters.
 // Lifecycle methods (Start, Stop, Health) are automatically wired.
-func NewServiceFactory[T Service](factory interface{}, lifetime Lifetime) *TypedServiceDefinition[T] {
+func NewServiceFactory[T Service](factory interface{}, lifetime Lifetime) *orchestrator.TypedServiceDefinition[T] {
 	return orchestrator.NewServiceFactory[T](factory, lifetime)
 }
 
