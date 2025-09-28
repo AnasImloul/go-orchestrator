@@ -525,7 +525,6 @@ func (c *DefaultContainer) dfsCircularCheck(serviceType reflect.Type, visited, v
 	return nil
 }
 
-
 // Disposable interface for resources that need cleanup
 type Disposable interface {
 	Dispose() error
