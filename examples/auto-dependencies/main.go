@@ -49,7 +49,7 @@ func (d *databaseService) Stop(ctx context.Context) error {
 
 func (d *databaseService) Health(ctx context.Context) orchestrator.HealthStatus {
 	return orchestrator.HealthStatus{
-		Status:  "healthy",
+		Status:  orchestrator.HealthStatusHealthy,
 		Message: fmt.Sprintf("Database %s is connected", d.id),
 	}
 }
@@ -87,7 +87,7 @@ func (c *cacheService) Stop(ctx context.Context) error {
 
 func (c *cacheService) Health(ctx context.Context) orchestrator.HealthStatus {
 	return orchestrator.HealthStatus{
-		Status:  "healthy",
+		Status:  orchestrator.HealthStatusHealthy,
 		Message: fmt.Sprintf("Cache %s is connected", c.id),
 	}
 }
@@ -130,7 +130,7 @@ func (a *apiService) Stop(ctx context.Context) error {
 
 func (a *apiService) Health(ctx context.Context) orchestrator.HealthStatus {
 	return orchestrator.HealthStatus{
-		Status:  "healthy",
+		Status:  orchestrator.HealthStatusHealthy,
 		Message: fmt.Sprintf("API %s is running on port %d", a.id, a.port),
 	}
 }

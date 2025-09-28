@@ -39,7 +39,7 @@ func (s *exampleService) Stop(ctx context.Context) error {
 
 func (s *exampleService) Health(ctx context.Context) orchestrator.HealthStatus {
 	return orchestrator.HealthStatus{
-		Status:  "healthy",
+		Status:  orchestrator.HealthStatusHealthy,
 		Message: fmt.Sprintf("Service %s is running", s.name),
 	}
 }

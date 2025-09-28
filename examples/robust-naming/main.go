@@ -37,7 +37,7 @@ func (p *postgresDatabaseService) Stop(ctx context.Context) error {
 
 func (p *postgresDatabaseService) Health(ctx context.Context) orchestrator.HealthStatus {
 	return orchestrator.HealthStatus{
-		Status:  "healthy",
+		Status:  orchestrator.HealthStatusHealthy,
 		Message: fmt.Sprintf("PostgreSQL on %s:%d is healthy", p.host, p.port),
 	}
 }
@@ -78,7 +78,7 @@ func (m *mysqlDatabaseService) Stop(ctx context.Context) error {
 
 func (m *mysqlDatabaseService) Health(ctx context.Context) orchestrator.HealthStatus {
 	return orchestrator.HealthStatus{
-		Status:  "healthy",
+		Status:  orchestrator.HealthStatusHealthy,
 		Message: fmt.Sprintf("MySQL on %s:%d is healthy", m.host, m.port),
 	}
 }
@@ -119,7 +119,7 @@ func (r *redisCacheService) Stop(ctx context.Context) error {
 
 func (r *redisCacheService) Health(ctx context.Context) orchestrator.HealthStatus {
 	return orchestrator.HealthStatus{
-		Status:  "healthy",
+		Status:  orchestrator.HealthStatusHealthy,
 		Message: fmt.Sprintf("Redis on %s:%d is healthy", r.host, r.port),
 	}
 }
@@ -160,7 +160,7 @@ func (m *memcachedCacheService) Stop(ctx context.Context) error {
 
 func (m *memcachedCacheService) Health(ctx context.Context) orchestrator.HealthStatus {
 	return orchestrator.HealthStatus{
-		Status:  "healthy",
+		Status:  orchestrator.HealthStatusHealthy,
 		Message: fmt.Sprintf("Memcached on %s:%d is healthy", m.host, m.port),
 	}
 }

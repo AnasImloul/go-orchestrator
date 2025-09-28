@@ -247,9 +247,39 @@ func (lb *LifecycleBuilder) Build() LifecycleConfig {
 	return lb.config
 }
 
+// HealthStatusType represents the type of health status.
+type HealthStatusType int
+
+const (
+	// HealthStatusHealthy indicates the service is healthy and functioning normally
+	HealthStatusHealthy HealthStatusType = iota
+	// HealthStatusDegraded indicates the service is functioning but with reduced performance or capabilities
+	HealthStatusDegraded
+	// HealthStatusUnhealthy indicates the service is not functioning properly
+	HealthStatusUnhealthy
+	// HealthStatusUnknown indicates the health status cannot be determined
+	HealthStatusUnknown
+)
+
+// String returns the string representation of the health status type.
+func (h HealthStatusType) String() string {
+	switch h {
+	case HealthStatusHealthy:
+		return "healthy"
+	case HealthStatusDegraded:
+		return "degraded"
+	case HealthStatusUnhealthy:
+		return "unhealthy"
+	case HealthStatusUnknown:
+		return "unknown"
+	default:
+		return "unknown"
+	}
+}
+
 // HealthStatus represents the health status of a component.
 type HealthStatus struct {
-	Status  string
+	Status  HealthStatusType
 	Message string
 	Details map[string]interface{}
 }
@@ -442,8 +472,21 @@ func (sr *ServiceRegistry) Health(ctx context.Context) map[string]HealthStatus {
 	health := make(map[string]HealthStatus)
 
 	for name, componentHealth := range componentHealth {
+		// Convert lifecycle HealthStatus to our HealthStatusType
+		var statusType HealthStatusType
+		switch componentHealth.Status {
+		case lifecycle.HealthStatusHealthy:
+			statusType = HealthStatusHealthy
+		case lifecycle.HealthStatusDegraded:
+			statusType = HealthStatusDegraded
+		case lifecycle.HealthStatusUnhealthy:
+			statusType = HealthStatusUnhealthy
+		default:
+			statusType = HealthStatusUnknown
+		}
+
 		health[name] = HealthStatus{
-			Status:  string(componentHealth.Status),
+			Status:  statusType,
 			Message: componentHealth.Message,
 			Details: componentHealth.Details,
 		}
@@ -675,7 +718,7 @@ func NewServiceFactory[T Service](factory interface{}, lifetime Lifetime) *Typed
 				// For factory services, we need to resolve from the registry's container
 				// This is a limitation we'll address by modifying the serviceComponent
 				return HealthStatus{
-					Status:  "healthy",
+					Status:  HealthStatusHealthy,
 					Message: "Service is healthy",
 				}
 			},
@@ -768,14 +811,14 @@ func sanitizeServiceName(typeName string) string {
 	return serviceName
 }
 
-// mapHealthStatus converts a string health status to the lifecycle HealthStatus enum
-func mapHealthStatus(status string) lifecycle.HealthStatus {
-	switch strings.ToLower(status) {
-	case "healthy":
+// mapHealthStatus converts a HealthStatusType to the lifecycle HealthStatus enum
+func mapHealthStatus(status HealthStatusType) lifecycle.HealthStatus {
+	switch status {
+	case HealthStatusHealthy:
 		return lifecycle.HealthStatusHealthy
-	case "degraded":
+	case HealthStatusDegraded:
 		return lifecycle.HealthStatusDegraded
-	case "unhealthy":
+	case HealthStatusUnhealthy:
 		return lifecycle.HealthStatusUnhealthy
 	default:
 		return lifecycle.HealthStatusUnknown
