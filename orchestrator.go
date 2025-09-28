@@ -28,14 +28,8 @@ type (
 // ServiceDefinition represents a declarative service configuration.
 	ServiceDefinition = orchestrator.ServiceDefinition
 
-// TypedServiceDefinition represents a type-safe service definition.
-	TypedServiceDefinition[T any] = orchestrator.TypedServiceDefinition[T]
-
-// ServiceConfig represents a service registration configuration.
+	// ServiceConfig represents a service registration configuration.
 	ServiceConfig = orchestrator.ServiceConfig
-
-// TypedServiceConfig represents a type-safe service registration configuration.
-	TypedServiceConfig[T any] = orchestrator.TypedServiceConfig[T]
 
 // Lifetime represents the service lifetime.
 	Lifetime = orchestrator.Lifetime
@@ -64,6 +58,12 @@ type (
 	// Container provides a simplified interface to the DI container.
 	Container = orchestrator.Container
 )
+
+// TypedServiceDefinition represents a type-safe service definition.
+type TypedServiceDefinition[T any] = orchestrator.TypedServiceDefinition[T]
+
+// TypedServiceConfig represents a type-safe service registration configuration.
+type TypedServiceConfig[T any] = orchestrator.TypedServiceConfig[T]
 
 // Re-export constants from internal package
 const (
