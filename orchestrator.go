@@ -90,7 +90,12 @@ func NewWithConfig(config Config) *ServiceRegistry {
 	}
 }
 
-// Feature represents a declarative feature configuration.
+// ServiceDefinitionInterface represents the interface for service definitions.
+type ServiceDefinitionInterface interface {
+	ToServiceDefinition() *ServiceDefinition
+}
+
+// ServiceDefinition represents a declarative service configuration.
 type ServiceDefinition struct {
 	Name         string
 	Dependencies []string
@@ -100,11 +105,83 @@ type ServiceDefinition struct {
 	Metadata     map[string]string
 }
 
+// ToServiceDefinition returns itself for ServiceDefinition.
+func (sd *ServiceDefinition) ToServiceDefinition() *ServiceDefinition {
+	return sd
+}
+
+// TypedServiceDefinition represents a type-safe service definition.
+type TypedServiceDefinition[T any] struct {
+	Name         string
+	Dependencies []string
+	Service      TypedServiceConfig[T]
+	Lifecycle    LifecycleConfig
+	RetryConfig  *lifecycle.RetryConfig
+	Metadata     map[string]string
+}
+
+// WithLifecycle sets the lifecycle configuration for the typed service definition.
+func (tsd *TypedServiceDefinition[T]) WithLifecycle(builder *LifecycleBuilder) *TypedServiceDefinition[T] {
+	tsd.Lifecycle = builder.Build()
+	return tsd
+}
+
+// WithRetryConfig sets the retry configuration for the typed service definition.
+func (tsd *TypedServiceDefinition[T]) WithRetryConfig(config *lifecycle.RetryConfig) *TypedServiceDefinition[T] {
+	tsd.RetryConfig = config
+	return tsd
+}
+
+// WithDependencies sets the dependencies for the typed service definition.
+func (tsd *TypedServiceDefinition[T]) WithDependencies(deps ...string) *TypedServiceDefinition[T] {
+	tsd.Dependencies = deps
+	return tsd
+}
+
+// WithMetadata sets metadata for the typed service definition.
+func (tsd *TypedServiceDefinition[T]) WithMetadata(key, value string) *TypedServiceDefinition[T] {
+	if tsd.Metadata == nil {
+		tsd.Metadata = make(map[string]string)
+	}
+	tsd.Metadata[key] = value
+	return tsd
+}
+
+// ToServiceDefinition converts a typed service definition to a regular service definition.
+// This allows typed service definitions to work with the existing registration system.
+func (tsd *TypedServiceDefinition[T]) ToServiceDefinition() *ServiceDefinition {
+	return &ServiceDefinition{
+		Name:         tsd.Name,
+		Dependencies: tsd.Dependencies,
+		Services: []ServiceConfig{
+			{
+				Name:     tsd.Service.Name,
+				Type:     tsd.Service.Type,
+				Factory:  func(ctx context.Context, container *Container) (interface{}, error) {
+					return tsd.Service.Factory(ctx, container)
+				},
+				Lifetime: tsd.Service.Lifetime,
+			},
+		},
+		Lifecycle:   tsd.Lifecycle,
+		RetryConfig: tsd.RetryConfig,
+		Metadata:    tsd.Metadata,
+	}
+}
+
 // ServiceConfig represents a service registration configuration.
 type ServiceConfig struct {
 	Name     string
 	Type     reflect.Type
 	Factory  func(ctx context.Context, container *Container) (interface{}, error)
+	Lifetime Lifetime
+}
+
+// TypedServiceConfig represents a type-safe service registration configuration.
+type TypedServiceConfig[T any] struct {
+	Name     string
+	Type     reflect.Type
+	Factory  func(ctx context.Context, container *Container) (T, error)
 	Lifetime Lifetime
 }
 
@@ -379,10 +456,13 @@ func MustResolveType[T any](c *Container) T {
 }
 
 // Register registers a service definition in the service registry.
-func (sr *ServiceRegistry) Register(serviceDef *ServiceDefinition) *ServiceRegistry {
+// Accepts both ServiceDefinition and TypedServiceDefinition[T] through the interface.
+func (sr *ServiceRegistry) Register(serviceDefInterface ServiceDefinitionInterface) *ServiceRegistry {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
 
+	serviceDef := serviceDefInterface.ToServiceDefinition()
+	
 	if _, exists := sr.services[serviceDef.Name]; exists {
 		panic(fmt.Sprintf("service %s is already registered", serviceDef.Name))
 	}
@@ -620,9 +700,9 @@ func WithLifecycleFor[T any](sd *ServiceDefinition, sr *ServiceRegistry) *Lifecy
 }
 
 
-// NewServiceSingleton creates a new service definition with automatic name inference from interface type.
+// NewServiceSingleton creates a new type-safe service definition with automatic name inference from interface type.
 // The service name is automatically derived from the interface type name (e.g., DatabaseService -> "database").
-func NewServiceSingleton[T any](instance T) *ServiceDefinition {
+func NewServiceSingleton[T any](instance T) *TypedServiceDefinition[T] {
 	// Get the interface type T, not the concrete instance type
 	interfaceType := reflect.TypeOf((*T)(nil)).Elem()
 	serviceName := inferServiceNameFromType(interfaceType)
@@ -631,22 +711,21 @@ func NewServiceSingleton[T any](instance T) *ServiceDefinition {
 		return instance, nil
 	}
 	
-	// Create service definition directly
-	sd := NewService(serviceName)
-	sd.Services = append(sd.Services, ServiceConfig{
-		Type: interfaceType,
-		Factory:  func(ctx context.Context, container *Container) (interface{}, error) {
-			return factory(ctx, container)
+	// Create typed service definition
+	return &TypedServiceDefinition[T]{
+		Name: serviceName,
+		Service: TypedServiceConfig[T]{
+			Type: interfaceType,
+			Factory: factory,
+			Lifetime: Singleton,
 		},
-		Lifetime: Singleton,
-	})
-	return sd
+	}
 }
 
-// NewServiceFactory creates a new service definition with automatic name inference and dependency discovery.
+// NewServiceFactory creates a new type-safe service definition with automatic name inference and dependency discovery.
 // The service name is automatically derived from the interface type name.
 // Dependencies are automatically discovered from the factory function parameters.
-func NewServiceFactory[T any](factory interface{}, lifetime Lifetime) *ServiceDefinition {
+func NewServiceFactory[T any](factory interface{}, lifetime Lifetime) *TypedServiceDefinition[T] {
 	// Get the type name from the factory return type
 	factoryValue := reflect.ValueOf(factory)
 	factoryType := factoryValue.Type()
@@ -663,20 +742,33 @@ func NewServiceFactory[T any](factory interface{}, lifetime Lifetime) *ServiceDe
 		return callFactoryWithAutoDependencies[T](ctx, container, factory)
 	}
 	
-	// Create the service definition with the wrapper factory
-	serviceDef := NewService(serviceName)
-	serviceDef.Services = append(serviceDef.Services, ServiceConfig{
-		Type: returnType,
-		Factory:  func(ctx context.Context, container *Container) (interface{}, error) {
-			return wrapperFactory(ctx, container)
+	// Create typed service definition
+	serviceDef := &TypedServiceDefinition[T]{
+		Name: serviceName,
+		Service: TypedServiceConfig[T]{
+			Type: returnType,
+			Factory: wrapperFactory,
+			Lifetime: lifetime,
 		},
-		Lifetime: lifetime,
-	})
+	}
 	
 	// Automatically discover and add dependencies based on factory parameters
-	autoDiscoverDependencies(serviceDef, factory)
+	autoDiscoverDependenciesTyped(serviceDef, factory)
 	
 	return serviceDef
+}
+
+// autoDiscoverDependenciesTyped automatically discovers dependencies from factory function parameters for typed service definitions.
+func autoDiscoverDependenciesTyped[T any](serviceDef *TypedServiceDefinition[T], factory interface{}) {
+	factoryValue := reflect.ValueOf(factory)
+	factoryType := factoryValue.Type()
+	
+	// Get parameter types from the factory function
+	for i := 0; i < factoryType.NumIn(); i++ {
+		paramType := factoryType.In(i)
+		dependencyName := typeToDependencyName(paramType)
+		serviceDef.Dependencies = append(serviceDef.Dependencies, dependencyName)
+	}
 }
 
 // inferServiceNameFromType automatically infers the service name from a reflect.Type.
