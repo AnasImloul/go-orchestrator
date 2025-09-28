@@ -111,8 +111,8 @@ type APIService interface {
 
 // apiService implementation
 type apiService struct {
-	port int
-	db   DatabaseService
+	port  int
+	db    DatabaseService
 	cache CacheService
 }
 
