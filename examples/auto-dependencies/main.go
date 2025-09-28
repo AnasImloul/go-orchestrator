@@ -99,30 +99,30 @@ func main() {
 	fmt.Println("🎯 Automatic Dependency Discovery Example")
 	fmt.Println("==========================================")
 
-	// Create application
-	app := orchestrator.New()
+	// Create service registry
+	registry := orchestrator.New()
 
-	// Add database feature with instance
-	app.AddFeature(
-		orchestrator.NewFeatureWithInstance("database", 
+	// Register database service definition with instance
+	registry.Register(
+		orchestrator.NewServiceWithInstance("database", 
 			DatabaseService(&databaseService{host: "localhost", port: 5432, id: "db-001"}), 
 			orchestrator.Singleton,
 		),
 	)
 
-	// Add cache feature with instance
-	app.AddFeature(
-		orchestrator.NewFeatureWithInstance("cache", 
+	// Register cache service definition with instance
+	registry.Register(
+		orchestrator.NewServiceWithInstance("cache", 
 			CacheService(&cacheService{host: "localhost", port: 6379, id: "cache-001"}), 
 			orchestrator.Singleton,
 		),
 	)
 
-	// Add API feature with automatic dependency discovery
+	// Register API service definition with automatic dependency discovery
 	// The factory function only takes the dependencies as parameters
 	// Dependencies are automatically discovered from the function parameters!
-	app.AddFeature(
-		orchestrator.NewFeatureWithAutoFactory[APIService]("api",
+	registry.Register(
+		orchestrator.NewServiceWithAutoFactory[APIService]("api",
 			func(db DatabaseService, cache CacheService) APIService {
 				return &apiService{
 					port:  8080,
@@ -133,8 +133,8 @@ func main() {
 			},
 			orchestrator.Singleton,
 		).
-			WithComponent(
-				orchestrator.NewComponent().
+			WithLifecycle(
+				orchestrator.NewLifecycle().
 					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
 						api, err := orchestrator.ResolveType[APIService](container)
 						if err != nil {
@@ -143,7 +143,7 @@ func main() {
 						return api.Start()
 					}).
 					WithStop(func(ctx context.Context) error {
-						api, err := orchestrator.ResolveType[APIService](app.Container())
+						api, err := orchestrator.ResolveType[APIService](registry.Container())
 						if err != nil {
 							return err
 						}
@@ -158,23 +158,23 @@ func main() {
 			),
 	)
 
-	// Start the application
+	// Start the service registry
 	ctx := context.Background()
-	fmt.Println("\n🚀 Starting application...")
-	if err := app.Start(ctx); err != nil {
-		log.Fatalf("Failed to start application: %v", err)
+	fmt.Println("\n🚀 Starting service registry...")
+	if err := registry.Start(ctx); err != nil {
+		log.Fatalf("Failed to start service registry: %v", err)
 	}
 
 	// Show that dependencies were automatically resolved
-	fmt.Println("\n✅ Application started successfully!")
+	fmt.Println("\n✅ Service registry started successfully!")
 	fmt.Println("   - Dependencies were automatically discovered and injected")
 	fmt.Println("   - No manual dependency resolution needed in the factory")
 
-	// Stop the application
-	fmt.Println("\n🛑 Stopping application...")
-	if err := app.Stop(ctx); err != nil {
-		log.Fatalf("Failed to stop application: %v", err)
+	// Stop the service registry
+	fmt.Println("\n🛑 Stopping service registry...")
+	if err := registry.Stop(ctx); err != nil {
+		log.Fatalf("Failed to stop service registry: %v", err)
 	}
 
-	fmt.Println("✅ Application stopped successfully!")
+	fmt.Println("✅ Service registry stopped successfully!")
 }

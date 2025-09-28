@@ -113,35 +113,35 @@ func main() {
 	fmt.Println("Go Orchestrator - Best Syntax Example")
 	fmt.Println("====================================")
 
-	// Create application with default configuration
-	app := orchestrator.New()
+	// Create service registry with default configuration
+	registry := orchestrator.New()
 
-	// Method 1: Ultra-clean syntax using NewFeatureWithInstance (factory-based)
-	app.AddFeature(
-		orchestrator.WithComponentFor[DatabaseService](
-			orchestrator.NewFeatureWithInstance("database", DatabaseService(&databaseService{host: "localhost", port: 5432}), orchestrator.Singleton),
-			app,
+	// Method 1: Ultra-clean syntax using NewServiceWithInstance (factory-based)
+	registry.Register(
+		orchestrator.WithLifecycleFor[DatabaseService](
+			orchestrator.NewServiceWithInstance("database", DatabaseService(&databaseService{host: "localhost", port: 5432}), orchestrator.Singleton),
+			registry,
 		).
 			WithStartFor(func(db DatabaseService) error { return db.Connect() }).
 			WithStopFor(func(db DatabaseService) error { return db.Disconnect() }).
 			Build(),
 	)
 
-	// Method 2: Clean syntax using NewFeatureWithInstance with Transient lifetime (factory-based)
-	app.AddFeature(
-		orchestrator.WithComponentFor[CacheService](
-			orchestrator.NewFeatureWithInstance("cache", CacheService(&cacheService{host: "localhost", port: 6379}), orchestrator.Transient),
-			app,
+	// Method 2: Clean syntax using NewServiceWithInstance with Transient lifetime (factory-based)
+	registry.Register(
+		orchestrator.WithLifecycleFor[CacheService](
+			orchestrator.NewServiceWithInstance("cache", CacheService(&cacheService{host: "localhost", port: 6379}), orchestrator.Transient),
+			registry,
 		).
 			WithStartFor(func(cache CacheService) error { return cache.Connect() }).
 			WithStopFor(func(cache CacheService) error { return cache.Disconnect() }).
 			Build(),
 	)
 
-	// Method 3: Factory-based service with dependencies using NewFeatureWithFactory
-	app.AddFeature(
-		orchestrator.WithComponentFor[APIService](
-			orchestrator.NewFeatureWithFactory("api", 
+	// Method 3: Factory-based service with dependencies using NewServiceWithFactory
+	registry.Register(
+		orchestrator.WithLifecycleFor[APIService](
+			orchestrator.NewServiceWithFactory("api", 
 				func(ctx context.Context, container *orchestrator.Container) (APIService, error) {
 					db, err := orchestrator.ResolveType[DatabaseService](container)
 					if err != nil {
@@ -155,7 +155,7 @@ func main() {
 				}, 
 				orchestrator.Singleton,
 			).WithDependencies("database", "cache"),
-			app,
+			registry,
 		).
 			WithStartFor(func(api APIService) error { return api.Start() }).
 			WithStopFor(func(api APIService) error { return api.Stop() }).
@@ -168,21 +168,21 @@ func main() {
 			Build(),
 	)
 
-	// Start the application
+	// Start the service registry
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	fmt.Println("Starting application...")
-	if err := app.Start(ctx); err != nil {
-		panic(fmt.Errorf("Failed to start application: %w", err))
+	fmt.Println("Starting service registry...")
+	if err := registry.Start(ctx); err != nil {
+		panic(fmt.Errorf("Failed to start service registry: %w", err))
 	}
-	fmt.Println("Application started successfully!")
+	fmt.Println("Service registry started successfully!")
 
 	// Demonstrate different lifetimes by resolving services multiple times
 	fmt.Println("\nDemonstrating service lifetimes:")
 	fmt.Println("================================")
 
-	container := app.Container()
+	container := registry.Container()
 
 	// Resolve services multiple times to show lifetime behavior
 	for i := 0; i < 3; i++ {
@@ -207,7 +207,7 @@ func main() {
 
 	// Check health
 	fmt.Println("\nChecking application health...")
-	health := app.Health(ctx)
+	health := registry.Health(ctx)
 	for name, status := range health {
 		fmt.Printf("  %s: %s - %s\n", name, status.Status, status.Message)
 	}
@@ -216,13 +216,13 @@ func main() {
 	fmt.Println("\nRunning for 2 seconds...")
 	time.Sleep(2 * time.Second)
 
-	// Stop the application
-	fmt.Println("Stopping application...")
+	// Stop the service registry
+	fmt.Println("Stopping service registry...")
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer stopCancel()
 
-	if err := app.Stop(stopCtx); err != nil {
-		panic(fmt.Errorf("Failed to stop application: %w", err))
+	if err := registry.Stop(stopCtx); err != nil {
+		panic(fmt.Errorf("Failed to stop service registry: %w", err))
 	}
-	fmt.Println("Application stopped successfully!")
+	fmt.Println("Service registry stopped successfully!")
 }

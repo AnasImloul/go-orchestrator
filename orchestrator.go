@@ -23,12 +23,12 @@ import (
 	"github.com/AnasImloul/go-orchestrator/internal/logger"
 )
 
-// App represents the main application orchestrator.
+// ServiceRegistry represents the main service registry for dependency injection and lifecycle management.
 // This is the single entry point for the library.
-type App struct {
+type ServiceRegistry struct {
 	container        di.Container
 	lifecycleManager lifecycle.LifecycleManager
-	features         map[string]*Feature
+	services         map[string]*ServiceDefinition
 	config           Config
 	logger           logger.Logger
 	mu               sync.RWMutex
@@ -57,12 +57,12 @@ func DefaultConfig() Config {
 }
 
 // New creates a new application with the default configuration.
-func New() *App {
+func New() *ServiceRegistry {
 	return NewWithConfig(DefaultConfig())
 }
 
-// NewWithConfig creates a new application with the specified configuration.
-func NewWithConfig(config Config) *App {
+// NewWithConfig creates a new service registry with the specified configuration.
+func NewWithConfig(config Config) *ServiceRegistry {
 	// Create logger
 	logger := logger.NewSlogAdapter(slog.Default())
 
@@ -81,21 +81,21 @@ func NewWithConfig(config Config) *App {
 	// Create lifecycle manager
 	lifecycleManager := lifecycle.NewLifecycleManager(logger)
 
-	return &App{
+	return &ServiceRegistry{
 		container:        container,
 		lifecycleManager: lifecycleManager,
-		features:         make(map[string]*Feature),
+		services:         make(map[string]*ServiceDefinition),
 		config:           config,
 		logger:           logger,
 	}
 }
 
 // Feature represents a declarative feature configuration.
-type Feature struct {
+type ServiceDefinition struct {
 	Name         string
 	Dependencies []string
 	Services     []ServiceConfig
-	Component    ComponentConfig
+	Lifecycle    LifecycleConfig
 	RetryConfig  *lifecycle.RetryConfig
 	Metadata     map[string]string
 }
@@ -120,83 +120,83 @@ const (
 	Singleton
 )
 
-// ComponentConfig represents a component configuration.
-type ComponentConfig struct {
+// LifecycleConfig represents a service lifecycle configuration.
+type LifecycleConfig struct {
 	Start  func(ctx context.Context, container *Container) error
 	Stop   func(ctx context.Context) error
 	Health func(ctx context.Context) HealthStatus
 }
 
-// ComponentBuilder provides a fluent interface for building component configurations.
-type ComponentBuilder struct {
-	config ComponentConfig
+// LifecycleBuilder provides a fluent interface for building service lifecycle configurations.
+type LifecycleBuilder struct {
+	config LifecycleConfig
 }
 
-// ComponentBuilderFor provides a type-safe fluent API for building component configurations.
-type ComponentBuilderFor[T any] struct {
-	app     *App
-	builder *ComponentBuilder
-	feature *Feature
+// LifecycleBuilderFor provides a type-safe fluent API for building service lifecycle configurations.
+type LifecycleBuilderFor[T any] struct {
+	serviceRegistry *ServiceRegistry
+	builder         *LifecycleBuilder
+	serviceDef      *ServiceDefinition
 }
 
-// NewComponent creates a new component builder.
-func NewComponent() *ComponentBuilder {
-	return &ComponentBuilder{
-		config: ComponentConfig{},
+// NewLifecycle creates a new service lifecycle builder.
+func NewLifecycle() *LifecycleBuilder {
+	return &LifecycleBuilder{
+		config: LifecycleConfig{},
 	}
 }
 
-// WithStart sets the start function for the component.
-func (cb *ComponentBuilder) WithStart(start func(ctx context.Context, container *Container) error) *ComponentBuilder {
-	cb.config.Start = start
-	return cb
+// WithStart sets the start function for the service lifecycle.
+func (lb *LifecycleBuilder) WithStart(start func(ctx context.Context, container *Container) error) *LifecycleBuilder {
+	lb.config.Start = start
+	return lb
 }
 
-// WithStop sets the stop function for the component.
-func (cb *ComponentBuilder) WithStop(stop func(ctx context.Context) error) *ComponentBuilder {
-	cb.config.Stop = stop
-	return cb
+// WithStop sets the stop function for the service lifecycle.
+func (lb *LifecycleBuilder) WithStop(stop func(ctx context.Context) error) *LifecycleBuilder {
+	lb.config.Stop = stop
+	return lb
 }
 
-// WithHealth sets the health check function for the component.
-func (cb *ComponentBuilder) WithHealth(health func(ctx context.Context) HealthStatus) *ComponentBuilder {
-	cb.config.Health = health
-	return cb
+// WithHealth sets the health check function for the service lifecycle.
+func (lb *LifecycleBuilder) WithHealth(health func(ctx context.Context) HealthStatus) *LifecycleBuilder {
+	lb.config.Health = health
+	return lb
 }
 
-// Build returns the component configuration.
-func (cb *ComponentBuilder) Build() ComponentConfig {
-	return cb.config
+// Build returns the lifecycle configuration.
+func (lb *LifecycleBuilder) Build() LifecycleConfig {
+	return lb.config
 }
 
-// WithStartFor sets the start function for the component with type-safe service resolution.
-func (cbf *ComponentBuilderFor[T]) WithStartFor(startFunc func(T) error) *ComponentBuilderFor[T] {
-	cbf.builder.WithStart(func(ctx context.Context, container *Container) error {
+// WithStartFor sets the start function for the service lifecycle with type-safe service resolution.
+func (lbf *LifecycleBuilderFor[T]) WithStartFor(startFunc func(T) error) *LifecycleBuilderFor[T] {
+	lbf.builder.WithStart(func(ctx context.Context, container *Container) error {
 		service, err := ResolveType[T](container)
 		if err != nil {
 			return err
 		}
 		return startFunc(service)
 	})
-	return cbf
+	return lbf
 }
 
-// WithStopFor sets the stop function for the component with type-safe service resolution.
-func (cbf *ComponentBuilderFor[T]) WithStopFor(stopFunc func(T) error) *ComponentBuilderFor[T] {
-	cbf.builder.WithStop(func(ctx context.Context) error {
-		service, err := ResolveType[T](cbf.app.Container())
+// WithStopFor sets the stop function for the service lifecycle with type-safe service resolution.
+func (lbf *LifecycleBuilderFor[T]) WithStopFor(stopFunc func(T) error) *LifecycleBuilderFor[T] {
+	lbf.builder.WithStop(func(ctx context.Context) error {
+		service, err := ResolveType[T](lbf.serviceRegistry.Container())
 		if err != nil {
 			return err
 		}
 		return stopFunc(service)
 	})
-	return cbf
+	return lbf
 }
 
-// WithHealthFor sets the health function for the component with type-safe service resolution.
-func (cbf *ComponentBuilderFor[T]) WithHealthFor(healthFunc func(T) HealthStatus) *ComponentBuilderFor[T] {
-	cbf.builder.WithHealth(func(ctx context.Context) HealthStatus {
-		service, err := ResolveType[T](cbf.app.Container())
+// WithHealthFor sets the health function for the service lifecycle with type-safe service resolution.
+func (lbf *LifecycleBuilderFor[T]) WithHealthFor(healthFunc func(T) HealthStatus) *LifecycleBuilderFor[T] {
+	lbf.builder.WithHealth(func(ctx context.Context) HealthStatus {
+		service, err := ResolveType[T](lbf.serviceRegistry.Container())
 		if err != nil {
 			return HealthStatus{
 				Status:  "unhealthy",
@@ -205,13 +205,13 @@ func (cbf *ComponentBuilderFor[T]) WithHealthFor(healthFunc func(T) HealthStatus
 		}
 		return healthFunc(service)
 	})
-	return cbf
+	return lbf
 }
 
-// Build completes the component configuration and returns the feature.
-func (cbf *ComponentBuilderFor[T]) Build() *Feature {
-	cbf.feature.Component = cbf.builder.Build()
-	return cbf.feature
+// Build completes the lifecycle configuration and returns the service definition.
+func (lbf *LifecycleBuilderFor[T]) Build() *ServiceDefinition {
+	lbf.serviceDef.Lifecycle = lbf.builder.Build()
+	return lbf.serviceDef
 }
 
 // HealthStatus represents the health status of a component.
@@ -345,26 +345,26 @@ func WithStartFunc[T any](fn func(T) error) func(context.Context, *Container) er
 	}
 }
 
-func WithStopFuncWithApp[T any](app *App, fn func(T) error) func(context.Context) error {
+func WithStopFuncWithService[T any](serviceRegistry *ServiceRegistry, fn func(T) error) func(context.Context) error {
 	return func(ctx context.Context) error {
-		service, err := ResolveType[T](app.Container())
+		svc, err := ResolveType[T](serviceRegistry.Container())
 		if err != nil {
 			return err
 		}
-		return fn(service)
+		return fn(svc)
 	}
 }
 
-func WithHealthFunc[T any](app *App, fn func(T) HealthStatus) func(context.Context) HealthStatus {
+func WithHealthFunc[T any](serviceRegistry *ServiceRegistry, fn func(T) HealthStatus) func(context.Context) HealthStatus {
 	return func(ctx context.Context) HealthStatus {
-		service, err := ResolveType[T](app.Container())
+		svc, err := ResolveType[T](serviceRegistry.Container())
 		if err != nil {
 			return HealthStatus{
 				Status:  "unhealthy",
 				Message: "Failed to resolve service",
 			}
 		}
-		return fn(service)
+		return fn(svc)
 	}
 }
 
@@ -378,30 +378,30 @@ func MustResolveType[T any](c *Container) T {
 	return instance
 }
 
-// AddFeature adds a feature to the application.
-func (a *App) AddFeature(feature *Feature) *App {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+// Register registers a service definition in the service registry.
+func (sr *ServiceRegistry) Register(serviceDef *ServiceDefinition) *ServiceRegistry {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
 
-	if _, exists := a.features[feature.Name]; exists {
-		panic(fmt.Sprintf("feature %s is already registered", feature.Name))
+	if _, exists := sr.services[serviceDef.Name]; exists {
+		panic(fmt.Sprintf("service %s is already registered", serviceDef.Name))
 	}
 
-	a.features[feature.Name] = feature
-	return a
+	sr.services[serviceDef.Name] = serviceDef
+	return sr
 }
 
-// Start starts the application.
-func (a *App) Start(ctx context.Context) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+// Start starts the service registry.
+func (sr *ServiceRegistry) Start(ctx context.Context) error {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
 
-	a.logger.Info("Starting application")
+	sr.logger.Info("Starting service registry")
 
 	// Register all services first
-	container := a.Container()
-	for _, feature := range a.features {
-		for _, service := range feature.Services {
+	container := sr.Container()
+	for _, serviceDef := range sr.services {
+		for _, service := range serviceDef.Services {
 			// All services now use factories for consistent behavior
 			if service.Factory != nil {
 				if service.Name != "" {
@@ -421,37 +421,37 @@ func (a *App) Start(ctx context.Context) error {
 		}
 	}
 
-	// Register all features as components
-	for name, feature := range a.features {
-		component := &featureComponent{
-			feature: feature,
-			app:     a,
+	// Register all service definitions as lifecycle components
+	for name, serviceDef := range sr.services {
+		component := &serviceComponent{
+			serviceDef: serviceDef,
+			serviceRegistry: sr,
 		}
 
-		if err := a.lifecycleManager.RegisterComponent(component); err != nil {
-			return fmt.Errorf("failed to register component %s: %w", name, err)
+		if err := sr.lifecycleManager.RegisterComponent(component); err != nil {
+			return fmt.Errorf("failed to register lifecycle component %s: %w", name, err)
 		}
 	}
 
 	// Start the lifecycle manager
-	return a.lifecycleManager.Start(ctx)
+	return sr.lifecycleManager.Start(ctx)
 }
 
-// Stop stops the application.
-func (a *App) Stop(ctx context.Context) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+// Stop stops the service registry.
+func (sr *ServiceRegistry) Stop(ctx context.Context) error {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
 
-	a.logger.Info("Stopping application")
-	return a.lifecycleManager.Stop(ctx)
+	sr.logger.Info("Stopping service registry")
+	return sr.lifecycleManager.Stop(ctx)
 }
 
-// Health returns the health status of the application.
-func (a *App) Health(ctx context.Context) map[string]HealthStatus {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
+// Health returns the health status of the service registry.
+func (sr *ServiceRegistry) Health(ctx context.Context) map[string]HealthStatus {
+	sr.mu.RLock()
+	defer sr.mu.RUnlock()
 
-	states := a.lifecycleManager.GetAllComponentStates()
+	states := sr.lifecycleManager.GetAllComponentStates()
 	health := make(map[string]HealthStatus)
 
 	for name, state := range states {
@@ -466,8 +466,8 @@ func (a *App) Health(ctx context.Context) map[string]HealthStatus {
 }
 
 // Container returns the DI container.
-func (a *App) Container() *Container {
-	return &Container{container: a.container}
+func (sr *ServiceRegistry) Container() *Container {
+	return &Container{container: sr.container}
 }
 
 // CreateScope creates a new scope for the container.
@@ -487,41 +487,41 @@ func (c *Container) Dispose() error {
 	return nil
 }
 
-// featureComponent wraps a feature as a lifecycle component.
-type featureComponent struct {
-	feature *Feature
-	app     *App
+// serviceComponent wraps a service definition as a lifecycle component.
+type serviceComponent struct {
+	serviceDef      *ServiceDefinition
+	serviceRegistry *ServiceRegistry
 }
 
-func (c *featureComponent) Name() string {
-	return c.feature.Name
+func (c *serviceComponent) Name() string {
+	return c.serviceDef.Name
 }
 
-func (c *featureComponent) Dependencies() []string {
-	return c.feature.Dependencies
+func (c *serviceComponent) Dependencies() []string {
+	return c.serviceDef.Dependencies
 }
 
-func (c *featureComponent) Start(ctx context.Context) error {
-	// Services are already registered in App.Start()
-	// Just start the component
-	if c.feature.Component.Start != nil {
-		container := c.app.Container()
-		return c.feature.Component.Start(ctx, container)
+func (c *serviceComponent) Start(ctx context.Context) error {
+	// Services are already registered in ServiceRegistry.Start()
+	// Just start the lifecycle
+	if c.serviceDef.Lifecycle.Start != nil {
+		container := c.serviceRegistry.Container()
+		return c.serviceDef.Lifecycle.Start(ctx, container)
 	}
 
 	return nil
 }
 
-func (c *featureComponent) Stop(ctx context.Context) error {
-	if c.feature.Component.Stop != nil {
-		return c.feature.Component.Stop(ctx)
+func (c *serviceComponent) Stop(ctx context.Context) error {
+	if c.serviceDef.Lifecycle.Stop != nil {
+		return c.serviceDef.Lifecycle.Stop(ctx)
 	}
 	return nil
 }
 
-func (c *featureComponent) Health(ctx context.Context) lifecycle.ComponentHealth {
-	if c.feature.Component.Health != nil {
-		status := c.feature.Component.Health(ctx)
+func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth {
+	if c.serviceDef.Lifecycle.Health != nil {
+		status := c.serviceDef.Lifecycle.Health(ctx)
 		return lifecycle.ComponentHealth{
 			Status:    lifecycle.HealthStatusHealthy, // Default to healthy
 			Message:   status.Message,
@@ -532,47 +532,47 @@ func (c *featureComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 
 	return lifecycle.ComponentHealth{
 		Status:    lifecycle.HealthStatusHealthy,
-		Message:   "Component is healthy",
+		Message:   "Service is healthy",
 		Timestamp: time.Now(),
 	}
 }
 
-func (c *featureComponent) GetRetryConfig() *lifecycle.RetryConfig {
-	return c.feature.RetryConfig
+func (c *serviceComponent) GetRetryConfig() *lifecycle.RetryConfig {
+	return c.serviceDef.RetryConfig
 }
 
-// Helper functions for creating features
+// Helper functions for creating service definitions
 
-// NewFeature creates a new feature with the given name.
-func NewFeature(name string) *Feature {
-	return &Feature{
+// NewService creates a new service definition with the given name.
+func NewService(name string) *ServiceDefinition {
+	return &ServiceDefinition{
 		Name:     name,
 		Services: make([]ServiceConfig, 0),
 		Metadata: make(map[string]string),
 	}
 }
 
-// WithDependencies sets the dependencies for the feature.
-func (f *Feature) WithDependencies(deps ...string) *Feature {
-	f.Dependencies = deps
-	return f
+// WithDependencies sets the dependencies for the service definition.
+func (sd *ServiceDefinition) WithDependencies(deps ...string) *ServiceDefinition {
+	sd.Dependencies = deps
+	return sd
 }
 
 // WithLifetime sets the lifetime for the last registered service.
-func (f *Feature) WithLifetime(lifetime Lifetime) *Feature {
-	if len(f.Services) == 0 {
+func (sd *ServiceDefinition) WithLifetime(lifetime Lifetime) *ServiceDefinition {
+	if len(sd.Services) == 0 {
 		panic("WithLifetime must be called after WithService")
 	}
 	// Update the lifetime of the last registered service
-	f.Services[len(f.Services)-1].Lifetime = lifetime
-	return f
+	sd.Services[len(sd.Services)-1].Lifetime = lifetime
+	return sd
 }
 
 
-// WithServiceFactory adds a service factory to the feature using generics.
+// WithServiceFactory adds a service factory to the service definition using generics.
 // T must be an interface type that the factory returns.
-func WithServiceFactory[T any](factory func(ctx context.Context, container *Container) (T, error)) func(*Feature) *Feature {
-	return func(f *Feature) *Feature {
+func WithServiceFactory[T any](factory func(ctx context.Context, container *Container) (T, error)) func(*ServiceDefinition) *ServiceDefinition {
+	return func(sd *ServiceDefinition) *ServiceDefinition {
 		serviceType := reflect.TypeOf((*T)(nil)).Elem()
 
 		// Create a wrapper factory that returns interface{}
@@ -584,71 +584,71 @@ func WithServiceFactory[T any](factory func(ctx context.Context, container *Cont
 			return result, nil
 		}
 
-		f.Services = append(f.Services, ServiceConfig{
+		sd.Services = append(sd.Services, ServiceConfig{
 			Type:     serviceType,
 			Factory:  wrapperFactory,
 			Lifetime: Singleton, // Default to Singleton, can be overridden with WithLifetime
 		})
-		return f
+		return sd
 	}
 }
 
-// WithNamedService adds a named service to the feature.
-func (f *Feature) WithNamedService(name string, serviceType reflect.Type, factory func(ctx context.Context, container *Container) (interface{}, error), lifetime Lifetime) *Feature {
-	f.Services = append(f.Services, ServiceConfig{
+// WithNamedService adds a named service to the service definition.
+func (sd *ServiceDefinition) WithNamedService(name string, serviceType reflect.Type, factory func(ctx context.Context, container *Container) (interface{}, error), lifetime Lifetime) *ServiceDefinition {
+	sd.Services = append(sd.Services, ServiceConfig{
 		Name:     name,
 		Type:     serviceType,
 		Factory:  factory,
 		Lifetime: lifetime,
 	})
-	return f
+	return sd
 }
 
-// WithComponent sets the component configuration for the feature using a builder.
-func (f *Feature) WithComponent(builder *ComponentBuilder) *Feature {
-	f.Component = builder.Build()
-	return f
+// WithLifecycle sets the lifecycle configuration for the service definition using a builder.
+func (sd *ServiceDefinition) WithLifecycle(builder *LifecycleBuilder) *ServiceDefinition {
+	sd.Lifecycle = builder.Build()
+	return sd
 }
 
-// WithComponentFor creates a component builder with type-safe lifecycle methods.
-// This is a shorthand for common component patterns.
-func WithComponentFor[T any](f *Feature, app *App) *ComponentBuilderFor[T] {
-	return &ComponentBuilderFor[T]{
-		app:      app,
-		builder:  NewComponent(),
-		feature:  f,
+// WithLifecycleFor creates a lifecycle builder with type-safe lifecycle methods.
+// This is a shorthand for common lifecycle patterns.
+func WithLifecycleFor[T any](sd *ServiceDefinition, sr *ServiceRegistry) *LifecycleBuilderFor[T] {
+	return &LifecycleBuilderFor[T]{
+		serviceRegistry: sr,
+		builder:         NewLifecycle(),
+		serviceDef:      sd,
 	}
 }
 
 
-// NewFeatureWithFactory creates a new feature with a service factory using the cleanest syntax.
-// This is the most concise way to create a feature with a factory.
-func NewFeatureWithFactory[T any](name string, factory func(ctx context.Context, container *Container) (T, error), lifetime Lifetime) *Feature {
-	return WithServiceFactory[T](factory)(NewFeature(name)).
+// NewServiceWithFactory creates a new service definition with a service factory using the cleanest syntax.
+// This is the most concise way to create a service definition with a factory.
+func NewServiceWithFactory[T any](name string, factory func(ctx context.Context, container *Container) (T, error), lifetime Lifetime) *ServiceDefinition {
+	return WithServiceFactory[T](factory)(NewService(name)).
 		WithLifetime(lifetime)
 }
 
-// NewFeatureWithAutoFactory creates a new feature with automatic dependency injection.
+// NewServiceWithAutoFactory creates a new service definition with automatic dependency injection.
 // The factory function should only take the dependencies as parameters, and they will be automatically resolved.
 // Dependencies are also automatically discovered and added to the dependency graph.
-func NewFeatureWithAutoFactory[T any](name string, factory interface{}, lifetime Lifetime) *Feature {
+func NewServiceWithAutoFactory[T any](name string, factory interface{}, lifetime Lifetime) *ServiceDefinition {
 	// Create a wrapper factory that handles automatic dependency injection
 	wrapperFactory := func(ctx context.Context, container *Container) (T, error) {
 		return callFactoryWithAutoDependencies[T](ctx, container, factory)
 	}
 	
-	// Create the feature with the wrapper factory
-	feature := NewFeatureWithFactory(name, wrapperFactory, lifetime)
+	// Create the service definition with the wrapper factory
+	serviceDef := NewServiceWithFactory(name, wrapperFactory, lifetime)
 	
 	// Automatically discover and add dependencies based on factory parameters
-	autoDiscoverDependencies(feature, factory)
+	autoDiscoverDependencies(serviceDef, factory)
 	
-	return feature
+	return serviceDef
 }
 
-// NewFeatureWithInstance creates a new feature with a service instance by wrapping it in a factory.
+// NewServiceWithInstance creates a new service definition with a service instance by wrapping it in a factory.
 // This is the recommended way to register simple services without dependencies.
-func NewFeatureWithInstance[T any](name string, instance T, lifetime Lifetime) *Feature {
+func NewServiceWithInstance[T any](name string, instance T, lifetime Lifetime) *ServiceDefinition {
 	// Create a factory that returns the instance
 	factory := func(ctx context.Context, container *Container) (T, error) {
 		// For Transient services, create a new instance by cloning
@@ -658,25 +658,25 @@ func NewFeatureWithInstance[T any](name string, instance T, lifetime Lifetime) *
 		// For Singleton and Scoped, return the same instance
 		return instance, nil
 	}
-	return NewFeatureWithFactory(name, factory, lifetime)
+	return NewServiceWithFactory(name, factory, lifetime)
 }
 
-// WithRetryConfig sets the retry configuration for the feature.
-func (f *Feature) WithRetryConfig(config *lifecycle.RetryConfig) *Feature {
-	f.RetryConfig = config
-	return f
+// WithRetryConfig sets the retry configuration for the service definition.
+func (sd *ServiceDefinition) WithRetryConfig(config *lifecycle.RetryConfig) *ServiceDefinition {
+	sd.RetryConfig = config
+	return sd
 }
 
 // WithAutoDependencies enables automatic dependency discovery for the last registered service.
 // This will scan the factory function parameters and automatically resolve dependencies.
-func (f *Feature) WithAutoDependencies() *Feature {
-	if len(f.Services) == 0 {
-		return f
+func (sd *ServiceDefinition) WithAutoDependencies() *ServiceDefinition {
+	if len(sd.Services) == 0 {
+		return sd
 	}
 	
-	lastService := &f.Services[len(f.Services)-1]
+	lastService := &sd.Services[len(sd.Services)-1]
 	if lastService.Factory == nil {
-		return f
+		return sd
 	}
 	
 	// Create a wrapper factory that automatically resolves dependencies
@@ -686,18 +686,18 @@ func (f *Feature) WithAutoDependencies() *Feature {
 		return resolveDependenciesAndCallFactory(ctx, container, originalFactory)
 	}
 	
-	return f
+	return sd
 }
 
-// WithMetadata adds metadata to the feature.
-func (f *Feature) WithMetadata(key, value string) *Feature {
-	f.Metadata[key] = value
-	return f
+// WithMetadata adds metadata to the service definition.
+func (sd *ServiceDefinition) WithMetadata(key, value string) *ServiceDefinition {
+	sd.Metadata[key] = value
+	return sd
 }
 
 // autoDiscoverDependencies analyzes the factory function parameters and automatically
-// adds them as dependencies to the feature.
-func autoDiscoverDependencies(feature *Feature, factory interface{}) {
+// adds them as dependencies to the service definition.
+func autoDiscoverDependencies(serviceDef *ServiceDefinition, factory interface{}) {
 	factoryValue := reflect.ValueOf(factory)
 	factoryType := factoryValue.Type()
 	
@@ -722,9 +722,9 @@ func autoDiscoverDependencies(feature *Feature, factory interface{}) {
 		}
 	}
 	
-	// Add the discovered dependencies to the feature
+	// Add the discovered dependencies to the service definition
 	if len(dependencies) > 0 {
-		feature.Dependencies = append(feature.Dependencies, dependencies...)
+		serviceDef.Dependencies = append(serviceDef.Dependencies, dependencies...)
 	}
 }
 

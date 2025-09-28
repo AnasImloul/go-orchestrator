@@ -44,25 +44,19 @@ func main() {
 
 	// Add a simple feature
 	app.AddFeature(
-		orchestrator.WithService[*ExampleService](&ExampleService{name: "example-service"})(
-			orchestrator.NewFeature("example-service"),
+		orchestrator.WithComponentFor[*ExampleService](
+			orchestrator.NewFeatureWithInstance("example-service", &ExampleService{name: "example-service"}, orchestrator.Singleton),
+			app,
 		).
-			WithLifetime(orchestrator.Singleton).
-			WithComponent(
-				orchestrator.NewComponent().
-					WithStart(orchestrator.WithStartFunc[*ExampleService](func(service *ExampleService) error {
-						return service.Start()
-					})).
-					WithStop(orchestrator.WithStopFuncWithApp[*ExampleService](app, func(service *ExampleService) error {
-						return service.Stop()
-					})).
-					WithHealth(orchestrator.WithHealthFunc[*ExampleService](app, func(service *ExampleService) orchestrator.HealthStatus {
-						return orchestrator.HealthStatus{
-							Status:  service.Health(),
-							Message: "Service is running",
-						}
-					})),
-			),
+			WithStartFor(func(service *ExampleService) error { return service.Start() }).
+			WithStopFor(func(service *ExampleService) error { return service.Stop() }).
+			WithHealthFor(func(service *ExampleService) orchestrator.HealthStatus {
+				return orchestrator.HealthStatus{
+					Status:  service.Health(),
+					Message: "Service is running",
+				}
+			}).
+			Build(),
 	)
 
 	// Start the application

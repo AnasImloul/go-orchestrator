@@ -1,16 +1,17 @@
 # Go Orchestrator
 
-A powerful Go library for application orchestration, dependency injection, and lifecycle management.
+A powerful Go library for service registry, dependency injection, and lifecycle management.
 
 ## Features
 
-- **Dependency Injection Container**: Type-safe DI with support for singletons, scoped, and transient lifetimes
-- **Lifecycle Management**: Automatic startup/shutdown ordering based on dependencies and priorities
-- **Application Orchestration**: Coordinate multiple features with proper dependency resolution
-- **Health Checking**: Built-in health monitoring for all components
-- **Generic Helpers**: Type-safe resolution with `di.Resolve[T]()` syntax
+- **Service Registry**: Type-safe service registration with support for singletons, scoped, and transient lifetimes
+- **Lifecycle Management**: Automatic startup/shutdown ordering based on dependencies
+- **Dependency Injection**: Coordinate multiple services with proper dependency resolution
+- **Health Checking**: Built-in health monitoring for all services
+- **Generic Helpers**: Type-safe resolution with `orchestrator.ResolveType[T]()` syntax
 - **DAG-based Dependencies**: Directed Acyclic Graph for proper dependency ordering
-- **Extensible**: Plugin architecture for custom features and components
+- **Automatic Discovery**: Auto-discover dependencies from factory function parameters
+- **Extensible**: Plugin architecture for custom services and lifecycle management
 
 ## Project Structure
 
@@ -18,20 +19,13 @@ This project follows the [Standard Go Project Layout](https://github.com/golang-
 
 ```
 go-orchestrator/
-├── cmd/              # Example applications
-│   └── example/      # Basic example application
 ├── internal/         # Private implementation (not importable)
 │   ├── di/          # Dependency injection container
 │   ├── lifecycle/   # Lifecycle management
 │   └── logger/      # Logging interface
 ├── examples/        # Usage examples
-│   ├── basic/       # Simple usage example
-│   ├── advanced/    # Complex orchestration example
-│   ├── simple/      # New declarative API example
-│   └── external-usage/ # External usage example
-├── docs/           # Documentation
-│   ├── api.md      # API documentation
-│   └── external-usage.md # External usage guide
+│   ├── auto-dependencies/ # Automatic dependency discovery example
+│   └── best-syntax/      # Clean API usage example
 ├── orchestrator.go # Single entry point for the library
 ├── .gitignore
 ├── LICENSE
@@ -73,43 +67,38 @@ package main
 
 import (
     "context"
-    "reflect"
     
     "github.com/AnasImloul/go-orchestrator"
 )
 
 func main() {
-    // Create application
-    app := orchestrator.New()
+    // Create service registry
+    registry := orchestrator.New()
     
-    // Add features declaratively
-    app.AddFeature(
-        orchestrator.WithServiceInstanceT[DatabaseService]("database",
-            &databaseService{host: "localhost", port: 5432},
-        ).
-            WithComponent(
-                orchestrator.NewComponent().
-                    WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-                        db, _ := orchestrator.ResolveType[DatabaseService](container)
-                        return db.Connect()
-                    }).
-                    WithStop(func(ctx context.Context) error {
-                        db, _ := orchestrator.ResolveType[DatabaseService](app.Container())
-                        return db.Disconnect()
-                    }),
+    // Register service definitions declaratively
+    registry.Register(
+        orchestrator.WithLifecycleFor[DatabaseService](
+            orchestrator.NewServiceWithInstance("database",
+                DatabaseService(&databaseService{host: "localhost", port: 5432}),
+                orchestrator.Singleton,
             ),
+            registry,
+        ).
+            WithStartFor(func(db DatabaseService) error { return db.Connect() }).
+            WithStopFor(func(db DatabaseService) error { return db.Disconnect() }).
+            Build(),
     )
     
-    // Start application
+    // Start service registry
     ctx := context.Background()
-    if err := app.Start(ctx); err != nil {
+    if err := registry.Start(ctx); err != nil {
         panic(err)
     }
     
-    // Application is now running...
+    // Service registry is now running...
     
     // Graceful shutdown
-    app.Stop(ctx)
+    registry.Stop(ctx)
 }
 ```
 
@@ -123,7 +112,7 @@ func main() {
 - **Parallel execution**: Independent components start simultaneously for better performance
 - **Less verbose**: Minimal boilerplate code
 
-### Dependency Injection
+### Service Registry & Dependency Injection
 ```go
 // Define interfaces (best practice)
 type DatabaseService interface {
@@ -131,21 +120,23 @@ type DatabaseService interface {
     Disconnect() error
 }
 
-// Register services declaratively (two approaches)
+// Register service definitions declaratively
 
-// Approach 1: Using reflection (traditional)
-app.AddFeature(
-    orchestrator.NewFeature("database").
-        WithServiceInstance(
-            reflect.TypeOf((*DatabaseService)(nil)).Elem(),
-            &databaseService{host: "localhost", port: 5432},
-        ),
+// Approach 1: Using service instance (factory-based)
+registry.Register(
+    orchestrator.NewServiceWithInstance("database",
+        DatabaseService(&databaseService{host: "localhost", port: 5432}),
+        orchestrator.Singleton,
+    ),
 )
 
-// Approach 2: Using generics (recommended - type-safe)
-app.AddFeature(
-    orchestrator.WithServiceInstanceT[DatabaseService]("database",
-        &databaseService{host: "localhost", port: 5432},
+// Approach 2: Using service factory (recommended for complex dependencies)
+registry.Register(
+    orchestrator.NewServiceWithFactory("database",
+        func(ctx context.Context, container *orchestrator.Container) (DatabaseService, error) {
+            return &databaseService{host: "localhost", port: 5432}, nil
+        },
+        orchestrator.Singleton,
     ),
 )
 
@@ -159,12 +150,15 @@ service, err := orchestrator.ResolveType[DatabaseService](container)
 ### Lifecycle Management
 ```go
 // Automatic startup/shutdown ordering based on dependencies
-// Independent components start in parallel for better performance
-app.AddFeature(
-    orchestrator.NewFeature("database").
+// Independent services start in parallel for better performance
+registry.Register(
+    orchestrator.NewServiceWithInstance("database",
+        DatabaseService(&databaseService{host: "localhost", port: 5432}),
+        orchestrator.Singleton,
+    ).
         WithDependencies("config"). // Depends on config
-        WithComponent(
-            orchestrator.NewComponent().
+        WithLifecycle(
+            orchestrator.NewLifecycle().
                 WithStart(startFunc).
                 WithStop(stopFunc).
                 WithHealth(healthFunc),
@@ -174,18 +168,25 @@ app.AddFeature(
 
 ### Parallel Execution
 
-The orchestrator automatically groups components by dependency level and starts independent components in parallel:
+The service registry automatically groups services by dependency level and starts independent services in parallel:
 
 ```go
 // These three services have no dependencies - they start in parallel at level 0
-app.AddFeature(orchestrator.NewFeature("cache"))
-app.AddFeature(orchestrator.NewFeature("metrics")) 
-app.AddFeature(orchestrator.NewFeature("logging"))
+registry.Register(orchestrator.NewServiceWithInstance("cache", CacheService(&cacheService{}), orchestrator.Singleton))
+registry.Register(orchestrator.NewServiceWithInstance("metrics", MetricsService(&metricsService{}), orchestrator.Singleton)) 
+registry.Register(orchestrator.NewServiceWithInstance("logging", LoggingService(&loggingService{}), orchestrator.Singleton))
 
 // This service depends on all three - it starts at level 1 after they're ready
-app.AddFeature(
-    orchestrator.NewFeature("api").
-        WithDependencies("cache", "metrics", "logging"),
+registry.Register(
+    orchestrator.NewServiceWithFactory("api",
+        func(ctx context.Context, container *orchestrator.Container) (APIService, error) {
+            cache, _ := orchestrator.ResolveType[CacheService](container)
+            metrics, _ := orchestrator.ResolveType[MetricsService](container)
+            logging, _ := orchestrator.ResolveType[LoggingService](container)
+            return &apiService{cache: cache, metrics: metrics, logging: logging}, nil
+        },
+        orchestrator.Singleton,
+    ).WithDependencies("cache", "metrics", "logging"),
 )
 ```
 
@@ -415,131 +416,130 @@ service, _ := orchestrator.ResolveType[MyService](scopedContainer)
 go get github.com/AnasImloul/go-orchestrator
 ```
 
-### 2. Import Required Packages
+### 2. Import the Library
 
 ```go
+import "github.com/AnasImloul/go-orchestrator"
+```
+
+> **Note**: The library provides a single entry point with all functionality. No need to import multiple packages.
+
+### 3. Create Your Service Registry
+
+```go
+package main
+
 import (
-    "github.com/AnasImloul/go-orchestrator/pkg/orchestrator"
-    "github.com/AnasImloul/go-orchestrator/pkg/di"
-    "github.com/AnasImloul/go-orchestrator/pkg/lifecycle"
-    "github.com/AnasImloul/go-orchestrator/pkg/logger"
+    "context"
+    "github.com/AnasImloul/go-orchestrator"
 )
+
+// Define your service interfaces
+type DatabaseService interface {
+    Connect() error
+    Disconnect() error
+}
+
+type APIService interface {
+    Start() error
+    Stop() error
+}
+
+// Implement your services
+type databaseService struct {
+    host string
+    port int
+}
+
+func (d *databaseService) Connect() error {
+    // Implementation
+    return nil
+}
+
+func (d *databaseService) Disconnect() error {
+    // Implementation
+    return nil
+}
+
+type apiService struct {
+    port int
+    db   DatabaseService
+}
+
+func (a *apiService) Start() error {
+    // Implementation
+    return nil
+}
+
+func (a *apiService) Stop() error {
+    // Implementation
+    return nil
+}
+
+func main() {
+    // Create service registry
+    registry := orchestrator.New()
+    
+    // Register services
+    registry.Register(
+        orchestrator.NewServiceWithInstance("database",
+            DatabaseService(&databaseService{host: "localhost", port: 5432}),
+            orchestrator.Singleton,
+        ),
+    )
+    
+    registry.Register(
+        orchestrator.NewServiceWithFactory("api",
+            func(ctx context.Context, container *orchestrator.Container) (APIService, error) {
+                db, err := orchestrator.ResolveType[DatabaseService](container)
+                if err != nil {
+                    return nil, err
+                }
+                return &apiService{port: 8080, db: db}, nil
+            },
+            orchestrator.Singleton,
+        ).WithDependencies("database"),
+    )
+    
+    // Start the service registry
+    ctx := context.Background()
+    if err := registry.Start(ctx); err != nil {
+        panic(err)
+    }
+    
+    // Your application is now running...
+    
+    // Graceful shutdown
+    registry.Stop(ctx)
+}
 ```
-
-> **Note**: The public API is production-ready and fully functional. All examples are working and can be used in production applications.
-
-### 3. Create Your Features
-
-```go
-type MyFeature struct {
-    name string
-}
-
-func (f *MyFeature) GetName() string { return f.name }
-func (f *MyFeature) GetDependencies() []string { return []string{} }
-func (f *MyFeature) GetPriority() int { return 100 }
-func (f *MyFeature) RegisterServices(container di.Container) error { return nil }
-func (f *MyFeature) CreateComponent(container di.Container) (lifecycle.Component, error) {
-    return &MyComponent{name: f.name}, nil
-}
-func (f *MyFeature) GetRetryConfig() *lifecycle.RetryConfig { return nil }
-func (f *MyFeature) GetMetadata() orchestrator.FeatureMetadata {
-    return orchestrator.FeatureMetadata{Name: f.name, Description: "My feature"}
-}
-```
-
-### 4. Start the Orchestrator
-
-```go
-// Create logger
-logger := logger.NewSlogAdapter(slog.Default())
-
-// Create orchestrator
-config := orchestrator.DefaultOrchestratorConfig()
-orch, err := orchestrator.NewOrchestrator(config, logger)
-if err != nil {
-    panic(err)
-}
-
-// Register features
-orch.RegisterFeature(&MyFeature{name: "my-service"})
-
-// Start application
-ctx := context.Background()
-if err := orch.Start(ctx); err != nil {
-    panic(err)
-}
-
-// Graceful shutdown
-defer orch.Stop(ctx)
-```
-
-For complete examples, see the [usage documentation](docs/usage.md), [external usage guide](docs/external-usage.md), and [external usage example](examples/external-usage/).
 
 ## Examples
 
-### Basic Example
+### Automatic Dependency Discovery
 
-See `examples/simple/main.go` for a simple declarative usage example.
+The `auto-dependencies` example demonstrates how the library automatically discovers and injects dependencies based on factory function parameters:
 
-### Clean API Example
+```bash
+go run examples/auto-dependencies/main.go
+```
 
-See `examples/clean-api/main.go` for a demonstration of the new clean, declarative API with proper service lifetimes.
+### Best Syntax Example
 
-### Advanced Example
+The `best-syntax` example shows the cleanest API usage patterns with different service lifetimes:
 
-See `examples/advanced/main.go` for a complex orchestration example with multiple dependent services.
-
-### Service Lifetimes Example
-
-See `examples/lifetimes/main.go` for a demonstration of different service lifetimes (Singleton, Scoped, Transient).
-
-### Factory-Based Registration Example
-
-See `examples/factory-based/main.go` for examples of factory-based registration and named services.
-
-### Named Services Example
-
-See `examples/named-services/main.go` for examples of multiple services with the same interface type.
-
-### External Usage Example
-
-See `examples/external-usage/main.go` for a complete example showing how to use the library as an external dependency in your own project.
+```bash
+go run examples/best-syntax/main.go
+```
 
 ### Running Examples
 
 ```bash
-# Best syntax examples (recommended)
-go run examples/best-syntax/main.go
-go run examples/ultra-clean/main.go
+# Automatic dependency discovery example
 go run examples/auto-dependencies/main.go
 
-# Legacy examples (still supported)
-go run examples/simple/main.go
-go run examples/clean-api/main.go
-go run examples/advanced/main.go
-
-# Feature demonstrations
-go run examples/lifetimes/main.go
-go run examples/factory-based/main.go
-go run examples/named-services/main.go
-go run examples/parallel/main.go
-
-# Run the service lifetimes example
-go run examples/lifetimes/main.go
-
-# Run the factory-based registration example
-go run examples/factory-based/main.go
-
-# Run the named services example
-go run examples/named-services/main.go
-
-# Run the external usage example
-cd examples/external-usage
-go run main.go
-
-# Run the command-line example
-go run cmd/example/main.go
+# Best syntax example (recommended)
+go run examples/best-syntax/main.go
 ```
 
 ## Development
