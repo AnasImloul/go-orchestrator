@@ -2,11 +2,19 @@
 
 This directory contains performance tests and benchmarks for the Go Orchestrator library. The benchmarks use metaprogramming to generate large DAGs (Directed Acyclic Graphs) of services and measure start/stop times.
 
+## Directory Structure
+
+Each benchmark is organized in its own subdirectory to avoid package conflicts:
+
+- `basic/` - Basic performance benchmark
+- `advanced/` - Advanced performance benchmark with multiple DAG patterns
+- `suite/` - Comprehensive benchmark suite
+
 ## Files
 
-- `performance_benchmark.go` - Basic performance test with CLI argument for service count
-- `advanced_performance_benchmark.go` - Advanced performance test with different DAG patterns
-- `benchmark_suite_main.go` - Comprehensive benchmark suite with multiple test configurations
+- `basic/main.go` - Basic performance test with CLI argument for service count
+- `advanced/main.go` - Advanced performance test with different DAG patterns
+- `suite/main.go` - Comprehensive benchmark suite with multiple test configurations
 - `README.md` - This documentation file
 
 ## Quick Start
@@ -17,10 +25,10 @@ Test with a specific number of services:
 
 ```bash
 # Test with 1000 services
-go run performance_benchmark.go 1000
+go run ./benchmark/basic 1000
 
 # Test with 5000 services (will prompt for confirmation)
-go run performance_benchmark.go 5000
+go run ./benchmark/basic 5000
 ```
 
 ### Advanced Performance Test
@@ -29,14 +37,14 @@ Test with different DAG patterns:
 
 ```bash
 # Test with 1000 services using layered pattern (default)
-go run advanced_performance_benchmark.go 1000
+go run ./benchmark/advanced 1000
 
 # Test with different patterns
-go run advanced_performance_benchmark.go 1000 linear
-go run advanced_performance_benchmark.go 1000 tree
-go run advanced_performance_benchmark.go 1000 star
-go run advanced_performance_benchmark.go 1000 mesh
-go run advanced_performance_benchmark.go 1000 random
+go run ./benchmark/advanced 1000 linear
+go run ./benchmark/advanced 1000 tree
+go run ./benchmark/advanced 1000 star
+go run ./benchmark/advanced 1000 mesh
+go run ./benchmark/advanced 1000 random
 ```
 
 ### Benchmark Suite
@@ -45,13 +53,13 @@ Run comprehensive benchmarks with multiple configurations:
 
 ```bash
 # Test with 100, 500, 1000 services (default patterns)
-go run benchmark_suite_main.go "100,500,1000"
+go run ./benchmark/suite "100,500,1000"
 
 # Test 1000 services with different patterns
-go run benchmark_suite_main.go "1000:linear,tree,layered"
+go run ./benchmark/suite "1000:linear,tree,layered"
 
 # Test multiple counts and patterns with 3 iterations each
-go run benchmark_suite_main.go "100,500,1000:linear,tree:3"
+go run ./benchmark/suite "100,500,1000:linear,tree:3"
 ```
 
 ## DAG Patterns
