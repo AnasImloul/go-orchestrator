@@ -374,7 +374,11 @@ func (c *DefaultContainer) resolve(ctx context.Context, serviceType reflect.Type
 		if scope == nil {
 			// Create a temporary scope for this resolution
 			scope = NewScope(c, c.logger)
-			defer scope.Dispose()
+			defer func() {
+				if err := scope.Dispose(); err != nil {
+					c.logger.Error("Failed to dispose temporary scope", "error", err)
+				}
+			}()
 		}
 
 		instance, err := scope.Resolve(serviceType)
@@ -521,29 +525,6 @@ func (c *DefaultContainer) dfsCircularCheck(serviceType reflect.Type, visited, v
 	return nil
 }
 
-// validateInstance validates a resolved service instance
-func (c *DefaultContainer) validateInstance(serviceType reflect.Type, instance interface{}) error {
-	if instance == nil {
-		return fmt.Errorf("factory returned nil instance for type %s", serviceType.String())
-	}
-
-	instanceType := reflect.TypeOf(instance)
-
-	// Check if serviceType is an interface
-	if serviceType.Kind() == reflect.Interface {
-		// For interfaces, check if the instance implements the interface
-		if !instanceType.Implements(serviceType) {
-			return fmt.Errorf("instance of type %s does not implement interface %s", instanceType.String(), serviceType.String())
-		}
-	} else {
-		// For concrete types, check if types match or if instance is assignable to serviceType
-		if !instanceType.AssignableTo(serviceType) {
-			return fmt.Errorf("instance of type %s is not assignable to %s", instanceType.String(), serviceType.String())
-		}
-	}
-
-	return nil
-}
 
 // Disposable interface for resources that need cleanup
 type Disposable interface {
