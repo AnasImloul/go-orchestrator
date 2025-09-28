@@ -844,12 +844,7 @@ func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 						Status:    overallStatus,
 						Message:   message,
 						Details: map[string]interface{}{
-							"auto_detected":      true,
-							"total_dependencies": len(dependencies),
-							"dependencies":       dependencies,
-							"dependency_healths": dependencyHealths,
-							"unhealthy_count":    unhealthyCount,
-							"degraded_count":     degradedCount,
+							"auto_detected": true,
 						},
 						Timestamp: time.Now(),
 					}
