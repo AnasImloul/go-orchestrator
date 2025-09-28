@@ -10,7 +10,7 @@ import (
 )
 
 // autoDiscoverDependenciesTyped automatically discovers dependencies from factory function parameters for typed service definitions.
-// Only adds dependencies that are likely to be lifecycle components (interfaces that implement Service).
+// Adds dependencies that are likely to be lifecycle components (interfaces, structs implementing Service, or registered structs).
 func autoDiscoverDependenciesTyped[T any](serviceDef *TypedServiceDefinition[T], factory interface{}) {
 	factoryValue := reflect.ValueOf(factory)
 	factoryType := factoryValue.Type()
@@ -19,18 +19,21 @@ func autoDiscoverDependenciesTyped[T any](serviceDef *TypedServiceDefinition[T],
 	for i := 0; i < factoryType.NumIn(); i++ {
 		paramType := factoryType.In(i)
 		
-		// Only add as lifecycle dependency if it's likely to be a service
-		// Check if it's an interface type or if it implements the Service interface
-		if isLikelyService(paramType) {
+		// Add as lifecycle dependency if it's likely to be a service or a registered struct
+		// This includes:
+		// 1. Interface types (likely services)
+		// 2. Structs implementing the Service interface
+		// 3. Struct types that are registered as services (for dependency ordering)
+		if isLikelyServiceOrRegisteredStruct(paramType) {
 			dependencyName := typeToDependencyName(paramType)
 			serviceDef.Dependencies = append(serviceDef.Dependencies, dependencyName)
 		}
-		// Struct types are handled by DI container resolution, not lifecycle dependencies
 	}
 }
 
-// isLikelyService determines if a type is likely to be a service that needs lifecycle management
-func isLikelyService(paramType reflect.Type) bool {
+// isLikelyServiceOrRegisteredStruct determines if a type is likely to be a service or registered struct
+// that needs to be included in the dependency DAG for proper ordering and validation.
+func isLikelyServiceOrRegisteredStruct(paramType reflect.Type) bool {
 	// Remove pointer if present
 	if paramType.Kind() == reflect.Ptr {
 		paramType = paramType.Elem()
@@ -41,14 +44,61 @@ func isLikelyService(paramType reflect.Type) bool {
 		return true
 	}
 	
-	// If it's a struct, check if it implements the Service interface
+	// If it's a struct, we need to be more selective
 	if paramType.Kind() == reflect.Struct {
+		// Check if it implements the Service interface
 		serviceInterface := reflect.TypeOf((*Service)(nil)).Elem()
-		return paramType.Implements(serviceInterface)
+		if paramType.Implements(serviceInterface) {
+			return true
+		}
+		
+		// For struct types, we need to be more conservative
+		// Only include structs that are likely to be services, not configuration objects
+		// We can identify service structs by common naming patterns and characteristics
+		return isLikelyServiceStruct(paramType)
 	}
 	
 	// For other types (like logger.Logger), don't treat as lifecycle dependency
 	return false
+}
+
+// isLikelyServiceStruct determines if a struct is likely to be a service (not a config object)
+func isLikelyServiceStruct(structType reflect.Type) bool {
+	typeName := structType.Name()
+	
+	// Exclude common configuration/utility types
+	excludedSuffixes := []string{
+		"Config", "Configuration", "Settings", "Options", "Params", "Parameters",
+		"Request", "Response", "Message", "Event", "Data", "Model", "Entity",
+		"DTO", "VO", "PO", "BO", "DO", // Common data transfer object patterns
+	}
+	
+	for _, suffix := range excludedSuffixes {
+		if strings.HasSuffix(typeName, suffix) {
+			return false
+		}
+	}
+	
+	// Exclude common configuration prefixes
+	excludedPrefixes := []string{
+		"Config", "Settings", "Options", "Params",
+	}
+	
+	for _, prefix := range excludedPrefixes {
+		if strings.HasPrefix(typeName, prefix) {
+			return false
+		}
+	}
+	
+	// If it doesn't match exclusion patterns, assume it could be a service
+	// This is conservative - we'd rather miss a dependency than include config objects
+	return true
+}
+
+// isLikelyService determines if a type is likely to be a service that needs lifecycle management
+// This is kept for backward compatibility but now delegates to isLikelyServiceOrRegisteredStruct
+func isLikelyService(paramType reflect.Type) bool {
+	return isLikelyServiceOrRegisteredStruct(paramType)
 }
 
 // inferServiceNameFromType automatically infers a robust service name from a reflect.Type.
@@ -134,13 +184,11 @@ func mapHealthStatus(status HealthStatusType) lifecycle.HealthStatus {
 
 // typeToDependencyName converts a Go type to a dependency name.
 // Uses the same robust naming strategy as service registration to ensure consistency.
+// IMPORTANT: This must match exactly how service names are generated to ensure
+// dependency resolution works correctly.
 func typeToDependencyName(paramType reflect.Type) string {
-	// Remove pointer prefix if present
-	if paramType.Kind() == reflect.Ptr {
-		paramType = paramType.Elem()
-	}
-
 	// Use the same naming strategy as service registration
+	// Do NOT remove pointer prefix - this must match the service registration naming
 	return inferServiceNameFromType(paramType)
 }
 

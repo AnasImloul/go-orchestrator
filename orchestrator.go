@@ -157,6 +157,12 @@ func ResolveType[T any](c *Container) (T, error) {
 	return orchestrator.ResolveType[T](c)
 }
 
+// ResolveStruct resolves a service by struct type.
+// T can be any type (interface or struct).
+func ResolveStruct[T any](c *Container) (T, error) {
+	return orchestrator.ResolveStruct[T](c)
+}
+
 // RunWithGracefulShutdown provides a convenience function for running the orchestrator
 // with graceful shutdown handling. This is an optional utility - applications can
 // still implement their own signal handling and shutdown logic if needed.
