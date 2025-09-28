@@ -209,12 +209,6 @@ type LifecycleBuilder struct {
 	config LifecycleConfig
 }
 
-// LifecycleBuilderFor provides a type-safe fluent API for building service lifecycle configurations.
-type LifecycleBuilderFor[T any] struct {
-	serviceRegistry *ServiceRegistry
-	builder         *LifecycleBuilder
-	serviceDef      *ServiceDefinition
-}
 
 // NewLifecycle creates a new service lifecycle builder.
 func NewLifecycle() *LifecycleBuilder {
@@ -246,50 +240,6 @@ func (lb *LifecycleBuilder) Build() LifecycleConfig {
 	return lb.config
 }
 
-// WithStartFor sets the start function for the service lifecycle with type-safe service resolution.
-func (lbf *LifecycleBuilderFor[T]) WithStartFor(startFunc func(T) error) *LifecycleBuilderFor[T] {
-	lbf.builder.WithStart(func(ctx context.Context, container *Container) error {
-		service, err := ResolveType[T](container)
-		if err != nil {
-			return err
-		}
-		return startFunc(service)
-	})
-	return lbf
-}
-
-// WithStopFor sets the stop function for the service lifecycle with type-safe service resolution.
-func (lbf *LifecycleBuilderFor[T]) WithStopFor(stopFunc func(T) error) *LifecycleBuilderFor[T] {
-	lbf.builder.WithStop(func(ctx context.Context) error {
-		service, err := ResolveType[T](lbf.serviceRegistry.Container())
-		if err != nil {
-			return err
-		}
-		return stopFunc(service)
-	})
-	return lbf
-}
-
-// WithHealthFor sets the health function for the service lifecycle with type-safe service resolution.
-func (lbf *LifecycleBuilderFor[T]) WithHealthFor(healthFunc func(T) HealthStatus) *LifecycleBuilderFor[T] {
-	lbf.builder.WithHealth(func(ctx context.Context) HealthStatus {
-		service, err := ResolveType[T](lbf.serviceRegistry.Container())
-		if err != nil {
-			return HealthStatus{
-				Status:  "unhealthy",
-				Message: "Failed to resolve service",
-			}
-		}
-		return healthFunc(service)
-	})
-	return lbf
-}
-
-// Build completes the lifecycle configuration and returns the service definition.
-func (lbf *LifecycleBuilderFor[T]) Build() *ServiceDefinition {
-	lbf.serviceDef.Lifecycle = lbf.builder.Build()
-	return lbf.serviceDef
-}
 
 // HealthStatus represents the health status of a component.
 type HealthStatus struct {
@@ -392,68 +342,7 @@ func ResolveType[T any](c *Container) (T, error) {
 	return instance.(T), nil
 }
 
-// ResolveNamedType resolves a named service by interface type.
-// T must be an interface type, not a concrete struct.
-func ResolveNamedType[T any](c *Container, name string) (T, error) {
-	var zero T
-	serviceType := reflect.TypeOf((*T)(nil)).Elem()
 
-	// Enforce that T is an interface type
-	if serviceType.Kind() != reflect.Interface {
-		return zero, fmt.Errorf("ResolveNamedType[T] requires T to be an interface type, got %s", serviceType.Kind())
-	}
-
-	instance, err := c.ResolveByName(name)
-	if err != nil {
-		return zero, err
-	}
-
-	return instance.(T), nil
-}
-
-// Component helpers for common patterns
-func WithStartFunc[T any](fn func(T) error) func(context.Context, *Container) error {
-	return func(ctx context.Context, container *Container) error {
-		service, err := ResolveType[T](container)
-		if err != nil {
-			return err
-		}
-		return fn(service)
-	}
-}
-
-func WithStopFuncWithService[T any](serviceRegistry *ServiceRegistry, fn func(T) error) func(context.Context) error {
-	return func(ctx context.Context) error {
-		svc, err := ResolveType[T](serviceRegistry.Container())
-		if err != nil {
-			return err
-		}
-		return fn(svc)
-	}
-}
-
-func WithHealthFunc[T any](serviceRegistry *ServiceRegistry, fn func(T) HealthStatus) func(context.Context) HealthStatus {
-	return func(ctx context.Context) HealthStatus {
-		svc, err := ResolveType[T](serviceRegistry.Container())
-		if err != nil {
-			return HealthStatus{
-				Status:  "unhealthy",
-				Message: "Failed to resolve service",
-			}
-		}
-		return fn(svc)
-	}
-}
-
-// MustResolveType resolves a service by interface type, panicking on error.
-// T must be an interface type, not a concrete struct.
-func MustResolveType[T any](c *Container) T {
-	instance, err := ResolveType[T](c)
-	if err != nil {
-		panic(err)
-	}
-	return instance
-}
 
 // Register registers a service definition in the service registry.
 // Accepts both ServiceDefinition and TypedServiceDefinition[T] through the interface.
@@ -623,65 +512,7 @@ func (c *serviceComponent) GetRetryConfig() *lifecycle.RetryConfig {
 
 // Helper functions for creating service definitions
 
-// NewService creates a new service definition with the given name.
-func NewService(name string) *ServiceDefinition {
-	return &ServiceDefinition{
-		Name:     name,
-		Services: make([]ServiceConfig, 0),
-		Metadata: make(map[string]string),
-	}
-}
 
-// WithDependencies sets the dependencies for the service definition.
-func (sd *ServiceDefinition) WithDependencies(deps ...string) *ServiceDefinition {
-	sd.Dependencies = deps
-	return sd
-}
-
-// WithLifetime sets the lifetime for the last registered service.
-func (sd *ServiceDefinition) WithLifetime(lifetime Lifetime) *ServiceDefinition {
-	if len(sd.Services) == 0 {
-		panic("WithLifetime must be called after WithService")
-	}
-	// Update the lifetime of the last registered service
-	sd.Services[len(sd.Services)-1].Lifetime = lifetime
-	return sd
-}
-
-// WithServiceFactory adds a service factory to the service definition using generics.
-// T must be an interface type that the factory returns.
-func WithServiceFactory[T any](factory func(ctx context.Context, container *Container) (T, error)) func(*ServiceDefinition) *ServiceDefinition {
-	return func(sd *ServiceDefinition) *ServiceDefinition {
-		serviceType := reflect.TypeOf((*T)(nil)).Elem()
-
-		// Create a wrapper factory that returns interface{}
-		wrapperFactory := func(ctx context.Context, container *Container) (interface{}, error) {
-			result, err := factory(ctx, container)
-			if err != nil {
-				return nil, err
-			}
-			return result, nil
-		}
-
-		sd.Services = append(sd.Services, ServiceConfig{
-			Type:     serviceType,
-			Factory:  wrapperFactory,
-			Lifetime: Singleton, // Default to Singleton, can be overridden with WithLifetime
-		})
-		return sd
-	}
-}
-
-// WithNamedService adds a named service to the service definition.
-func (sd *ServiceDefinition) WithNamedService(name string, serviceType reflect.Type, factory func(ctx context.Context, container *Container) (interface{}, error), lifetime Lifetime) *ServiceDefinition {
-	sd.Services = append(sd.Services, ServiceConfig{
-		Name:     name,
-		Type:     serviceType,
-		Factory:  factory,
-		Lifetime: lifetime,
-	})
-	return sd
-}
 
 // WithLifecycle sets the lifecycle configuration for the service definition using a builder.
 func (sd *ServiceDefinition) WithLifecycle(builder *LifecycleBuilder) *ServiceDefinition {
@@ -689,15 +520,6 @@ func (sd *ServiceDefinition) WithLifecycle(builder *LifecycleBuilder) *ServiceDe
 	return sd
 }
 
-// WithLifecycleFor creates a lifecycle builder with type-safe lifecycle methods.
-// This is a shorthand for common lifecycle patterns.
-func WithLifecycleFor[T any](sd *ServiceDefinition, sr *ServiceRegistry) *LifecycleBuilderFor[T] {
-	return &LifecycleBuilderFor[T]{
-		serviceRegistry: sr,
-		builder:         NewLifecycle(),
-		serviceDef:      sd,
-	}
-}
 
 
 // NewServiceSingleton creates a new type-safe service definition with automatic name inference from interface type.
@@ -725,6 +547,7 @@ func NewServiceSingleton[T any](instance T) *TypedServiceDefinition[T] {
 // NewServiceFactory creates a new type-safe service definition with automatic name inference and dependency discovery.
 // The factory function must return type T and can take any number of dependencies as parameters.
 // Dependencies are automatically discovered from the factory function parameters.
+// Type safety is enforced at runtime with clear error messages for incorrect return types.
 func NewServiceFactory[T any](factory interface{}, lifetime Lifetime) *TypedServiceDefinition[T] {
 	// Get the interface type T
 	interfaceType := reflect.TypeOf((*T)(nil)).Elem()
@@ -777,6 +600,7 @@ func NewServiceFactory[T any](factory interface{}, lifetime Lifetime) *TypedServ
 	
 	return serviceDef
 }
+
 
 // autoDiscoverDependenciesTyped automatically discovers dependencies from factory function parameters for typed service definitions.
 func autoDiscoverDependenciesTyped[T any](serviceDef *TypedServiceDefinition[T], factory interface{}) {
