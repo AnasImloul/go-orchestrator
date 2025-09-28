@@ -70,6 +70,9 @@ jobs:
         go build ./cmd/example
         go build ./examples/auto-dependencies
         go build ./examples/best-syntax
+        go build ./examples/default-handlers
+        go build ./examples/improved-dx
+        go build ./examples/robust-naming
     
     - name: Build for multiple platforms
       run: |
