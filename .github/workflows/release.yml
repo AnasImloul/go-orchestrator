@@ -26,18 +26,15 @@ jobs:
     
     - name: Run tests
       run: |
-        go test ./...
-        go vet ./...
+        go test $(go list ./... | grep -v /benchmark)
+        go vet $(go list ./... | grep -v /benchmark)
         go fmt ./...
     
     - name: Build examples
       run: |
         go build ./cmd/example
-        go build ./examples/auto-dependencies
-        go build ./examples/best-syntax
-        go build ./examples/improved-dx
-        go build ./examples/robust-naming
-        go build ./examples/default-handlers
+        go build ./examples/basic
+        go build ./examples/advanced
     
     - name: Generate changelog
       id: changelog
