@@ -96,6 +96,19 @@ func ResolveType[T any](c *Container) (T, error) {
 	return instance.(T), nil
 }
 
+// ResolveStruct resolves a service by struct type.
+// T can be any type (interface or struct).
+func ResolveStruct[T any](c *Container) (T, error) {
+	var zero T
+	serviceType := reflect.TypeOf((*T)(nil)).Elem()
+
+	instance, err := c.Resolve(serviceType)
+	if err != nil {
+		return zero, err
+	}
+	return instance.(T), nil
+}
+
 // CreateScope creates a new scope for the container.
 func (c *Container) CreateScope() *Container {
 	scope := c.container.CreateScope()
