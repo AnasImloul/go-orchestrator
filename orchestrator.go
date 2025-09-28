@@ -723,19 +723,39 @@ func NewServiceSingleton[T any](instance T) *TypedServiceDefinition[T] {
 }
 
 // NewServiceFactory creates a new type-safe service definition with automatic name inference and dependency discovery.
-// The service name is automatically derived from the interface type name.
+// The factory function must return type T and can take any number of dependencies as parameters.
 // Dependencies are automatically discovered from the factory function parameters.
 func NewServiceFactory[T any](factory interface{}, lifetime Lifetime) *TypedServiceDefinition[T] {
-	// Get the type name from the factory return type
+	// Get the interface type T
+	interfaceType := reflect.TypeOf((*T)(nil)).Elem()
+	serviceName := inferServiceNameFromType(interfaceType)
+	
+	// Validate that the factory function returns the correct type
 	factoryValue := reflect.ValueOf(factory)
 	factoryType := factoryValue.Type()
 	
-	// Get the return type (should be T)
+	if factoryType.Kind() != reflect.Func {
+		panic("factory must be a function")
+	}
+	
 	if factoryType.NumOut() == 0 {
 		panic("factory function must return a value")
 	}
+	
+	// Check that the return type matches T
 	returnType := factoryType.Out(0)
-	serviceName := inferServiceNameFromType(returnType)
+	expectedType := interfaceType
+	
+	// For interface types, we need to check if the return type implements the interface
+	if expectedType.Kind() == reflect.Interface {
+		if !returnType.Implements(expectedType) {
+			panic(fmt.Sprintf("factory return type %s does not implement interface %s", returnType, expectedType))
+		}
+	} else {
+		if returnType != expectedType {
+			panic(fmt.Sprintf("factory return type %s does not match expected type %s", returnType, expectedType))
+		}
+	}
 	
 	// Create a wrapper factory that handles automatic dependency injection
 	wrapperFactory := func(ctx context.Context, container *Container) (T, error) {
@@ -746,7 +766,7 @@ func NewServiceFactory[T any](factory interface{}, lifetime Lifetime) *TypedServ
 	serviceDef := &TypedServiceDefinition[T]{
 		Name: serviceName,
 		Service: TypedServiceConfig[T]{
-			Type: returnType,
+			Type: interfaceType,
 			Factory: wrapperFactory,
 			Lifetime: lifetime,
 		},
