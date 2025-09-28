@@ -44,55 +44,14 @@ func isLikelyServiceOrRegisteredStruct(paramType reflect.Type) bool {
 		return true
 	}
 	
-	// If it's a struct, we need to be more selective
+	// If it's a struct, include it as a potential dependency
+	// Let the DAG validation handle any issues with missing dependencies
 	if paramType.Kind() == reflect.Struct {
-		// Check if it implements the Service interface
-		serviceInterface := reflect.TypeOf((*Service)(nil)).Elem()
-		if paramType.Implements(serviceInterface) {
-			return true
-		}
-		
-		// For struct types, we need to be more conservative
-		// Only include structs that are likely to be services, not configuration objects
-		// We can identify service structs by common naming patterns and characteristics
-		return isLikelyServiceStruct(paramType)
+		return true
 	}
 	
 	// For other types (like logger.Logger), don't treat as lifecycle dependency
 	return false
-}
-
-// isLikelyServiceStruct determines if a struct is likely to be a service (not a config object)
-func isLikelyServiceStruct(structType reflect.Type) bool {
-	typeName := structType.Name()
-	
-	// Exclude common configuration/utility types
-	excludedSuffixes := []string{
-		"Config", "Configuration", "Settings", "Options", "Params", "Parameters",
-		"Request", "Response", "Message", "Event", "Data", "Model", "Entity",
-		"DTO", "VO", "PO", "BO", "DO", // Common data transfer object patterns
-	}
-	
-	for _, suffix := range excludedSuffixes {
-		if strings.HasSuffix(typeName, suffix) {
-			return false
-		}
-	}
-	
-	// Exclude common configuration prefixes
-	excludedPrefixes := []string{
-		"Config", "Settings", "Options", "Params",
-	}
-	
-	for _, prefix := range excludedPrefixes {
-		if strings.HasPrefix(typeName, prefix) {
-			return false
-		}
-	}
-	
-	// If it doesn't match exclusion patterns, assume it could be a service
-	// This is conservative - we'd rather miss a dependency than include config objects
-	return true
 }
 
 // isLikelyService determines if a type is likely to be a service that needs lifecycle management
