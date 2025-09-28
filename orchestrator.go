@@ -136,6 +136,21 @@ func NewServiceFactory[T Service](factory interface{}, lifetime Lifetime) *orche
 	return orchestrator.NewServiceFactory[T](factory, lifetime)
 }
 
+// NewStructSingleton creates a new service definition for a struct instance.
+// The struct instance will be registered directly without requiring the Service interface.
+// This is useful for simple structs that don't need lifecycle management.
+func NewStructSingleton[T any](instance T) *orchestrator.TypedServiceDefinition[T] {
+	return orchestrator.NewStructSingleton(instance)
+}
+
+// NewStructFactory creates a new service definition for a struct with a factory function.
+// The factory function can return any struct type T.
+// Dependencies are automatically discovered from the factory function parameters.
+// No lifecycle management is provided - structs are registered as-is.
+func NewStructFactory[T any](factory interface{}, lifetime Lifetime) *orchestrator.TypedServiceDefinition[T] {
+	return orchestrator.NewStructFactory[T](factory, lifetime)
+}
+
 // ResolveType resolves a service by interface type.
 // T must be an interface type, not a concrete struct.
 func ResolveType[T any](c *Container) (T, error) {
