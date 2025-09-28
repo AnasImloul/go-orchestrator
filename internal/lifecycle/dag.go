@@ -239,35 +239,6 @@ func (d *DAG) hasCycle(name string) error {
 	return nil
 }
 
-// topologicalSort performs topological sorting using DFS
-func (d *DAG) topologicalSort(name string, result *[]*Node) error {
-	node := d.nodes[name]
-
-	if node.visiting {
-		return fmt.Errorf("circular dependency detected involving component: %s", name)
-	}
-
-	if node.visited {
-		return nil
-	}
-
-	node.visiting = true
-
-	// Visit all dependencies first
-	for _, dep := range node.Dependencies {
-		if err := d.topologicalSort(dep, result); err != nil {
-			return err
-		}
-	}
-
-	node.visiting = false
-	node.visited = true
-
-	// Add to result after all dependencies
-	*result = append(*result, node)
-
-	return nil
-}
 
 // calculateLevels calculates the dependency level for each node
 func (d *DAG) calculateLevels(levels map[string]int) {
