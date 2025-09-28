@@ -8,8 +8,9 @@ import (
 	"github.com/AnasImloul/go-orchestrator"
 )
 
-// DatabaseService interface
+// DatabaseService interface - now implements the Service interface
 type DatabaseService interface {
+	orchestrator.Service
 	Connect() error
 	Disconnect() error
 	GetConnectionID() string
@@ -22,18 +23,33 @@ type databaseService struct {
 	connectionID string
 }
 
+func (d *databaseService) Start(ctx context.Context) error {
+	fmt.Printf("🔌 Database starting connection to %s:%d\n", d.host, d.port)
+	return d.Connect()
+}
+
+func (d *databaseService) Stop(ctx context.Context) error {
+	fmt.Printf("🔌 Database stopping connection to %s:%d\n", d.host, d.port)
+	return d.Disconnect()
+}
+
+func (d *databaseService) Health(ctx context.Context) orchestrator.HealthStatus {
+	return orchestrator.HealthStatus{
+		Status:  "healthy",
+		Message: fmt.Sprintf("Database %s is connected", d.connectionID),
+	}
+}
+
 func (d *databaseService) Connect() error {
 	d.connectionID = fmt.Sprintf("conn_%d", time.Now().UnixNano())
-	fmt.Printf("Connecting to database at %s:%d (ID: %s)\n", d.host, d.port, d.connectionID)
+	fmt.Printf("   ✅ Database connected to %s:%d (ID: %s)\n", d.host, d.port, d.connectionID)
 	time.Sleep(100 * time.Millisecond)
-	fmt.Println("Database connected successfully")
 	return nil
 }
 
 func (d *databaseService) Disconnect() error {
-	fmt.Println("Disconnecting from database")
+	fmt.Printf("   ❌ Database disconnected from %s:%d\n", d.host, d.port)
 	time.Sleep(50 * time.Millisecond)
-	fmt.Println("Database disconnected")
 	return nil
 }
 
@@ -41,8 +57,9 @@ func (d *databaseService) GetConnectionID() string {
 	return d.connectionID
 }
 
-// CacheService interface
+// CacheService interface - now implements the Service interface
 type CacheService interface {
+	orchestrator.Service
 	Connect() error
 	Disconnect() error
 	GetInstanceID() string
@@ -55,18 +72,33 @@ type cacheService struct {
 	instanceID string
 }
 
+func (c *cacheService) Start(ctx context.Context) error {
+	fmt.Printf("💾 Cache starting connection to %s:%d\n", c.host, c.port)
+	return c.Connect()
+}
+
+func (c *cacheService) Stop(ctx context.Context) error {
+	fmt.Printf("💾 Cache stopping connection to %s:%d\n", c.host, c.port)
+	return c.Disconnect()
+}
+
+func (c *cacheService) Health(ctx context.Context) orchestrator.HealthStatus {
+	return orchestrator.HealthStatus{
+		Status:  "healthy",
+		Message: fmt.Sprintf("Cache %s is connected", c.instanceID),
+	}
+}
+
 func (c *cacheService) Connect() error {
 	c.instanceID = fmt.Sprintf("cache_%d", time.Now().UnixNano())
-	fmt.Printf("Connecting to cache at %s:%d (ID: %s)\n", c.host, c.port, c.instanceID)
+	fmt.Printf("   ✅ Cache connected to %s:%d (ID: %s)\n", c.host, c.port, c.instanceID)
 	time.Sleep(100 * time.Millisecond)
-	fmt.Println("Cache connected successfully")
 	return nil
 }
 
 func (c *cacheService) Disconnect() error {
-	fmt.Println("Disconnecting from cache")
+	fmt.Printf("   ❌ Cache disconnected from %s:%d\n", c.host, c.port)
 	time.Sleep(50 * time.Millisecond)
-	fmt.Println("Cache disconnected")
 	return nil
 }
 
@@ -77,11 +109,9 @@ func (c *cacheService) GetInstanceID() string {
 	return c.instanceID
 }
 
-// APIService interface
+// APIService interface - now implements the Service interface
 type APIService interface {
-	Start() error
-	Stop() error
-	Health() string
+	orchestrator.Service
 }
 
 // apiService implementation
@@ -91,22 +121,25 @@ type apiService struct {
 	cache CacheService
 }
 
-func (a *apiService) Start() error {
-	fmt.Printf("Starting API server on port %d\n", a.port)
+func (a *apiService) Start(ctx context.Context) error {
+	fmt.Printf("🚀 API starting on port %d\n", a.port)
 	time.Sleep(150 * time.Millisecond)
-	fmt.Println("API server started successfully")
+	fmt.Printf("   ✅ API server started successfully\n")
 	return nil
 }
 
-func (a *apiService) Stop() error {
-	fmt.Println("Stopping API server")
+func (a *apiService) Stop(ctx context.Context) error {
+	fmt.Printf("🛑 API stopping on port %d\n", a.port)
 	time.Sleep(75 * time.Millisecond)
-	fmt.Println("API server stopped")
+	fmt.Printf("   ✅ API server stopped successfully\n")
 	return nil
 }
 
-func (a *apiService) Health() string {
-	return "healthy"
+func (a *apiService) Health(ctx context.Context) orchestrator.HealthStatus {
+	return orchestrator.HealthStatus{
+		Status:  "healthy",
+		Message: fmt.Sprintf("API server is running on port %d", a.port),
+	}
 }
 
 func main() {
@@ -117,84 +150,30 @@ func main() {
 	registry := orchestrator.New()
 
 	// Method 1: Ultra-clean syntax using NewServiceSingleton (automatic name inference)
+	// Lifecycle methods are automatically wired!
 	registry.Register(
 		orchestrator.NewServiceSingleton[DatabaseService](
 			&databaseService{host: "localhost", port: 5432},
-		).
-			WithLifecycle(
-				orchestrator.NewLifecycle().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						db, err := orchestrator.ResolveType[DatabaseService](container)
-						if err != nil {
-							return err
-						}
-						return db.Connect()
-					}).
-					WithStop(func(ctx context.Context) error {
-						db, err := orchestrator.ResolveType[DatabaseService](registry.Container())
-						if err != nil {
-							return err
-						}
-						return db.Disconnect()
-					}),
-			),
+		),
 	)
 
 	// Method 2: Clean syntax using NewServiceSingleton with Transient lifetime
+	// Lifecycle methods are automatically wired!
 	registry.Register(
 		orchestrator.NewServiceSingleton[CacheService](
 			&cacheService{host: "localhost", port: 6379},
-		).
-			WithLifecycle(
-				orchestrator.NewLifecycle().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						cache, err := orchestrator.ResolveType[CacheService](container)
-						if err != nil {
-							return err
-						}
-						return cache.Connect()
-					}).
-					WithStop(func(ctx context.Context) error {
-						cache, err := orchestrator.ResolveType[CacheService](registry.Container())
-						if err != nil {
-							return err
-						}
-						return cache.Disconnect()
-					}),
-			),
+		),
 	)
 
 	// Method 3: Factory-based service with automatic dependency discovery
+	// Lifecycle methods are automatically wired!
 	registry.Register(
 		orchestrator.NewServiceFactory[APIService](
 			func(db DatabaseService, cache CacheService) APIService {
 				return &apiService{port: 8080, db: db, cache: cache}
 			},
 			orchestrator.Singleton,
-		).
-			WithLifecycle(
-				orchestrator.NewLifecycle().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						api, err := orchestrator.ResolveType[APIService](container)
-						if err != nil {
-							return err
-						}
-						return api.Start()
-					}).
-					WithStop(func(ctx context.Context) error {
-						api, err := orchestrator.ResolveType[APIService](registry.Container())
-						if err != nil {
-							return err
-						}
-						return api.Stop()
-					}).
-					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
-						return orchestrator.HealthStatus{
-							Status:  "healthy",
-							Message: "API server is running",
-						}
-					}),
-			),
+		),
 	)
 
 	// Start the service registry

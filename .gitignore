@@ -51,6 +51,8 @@ examples/*/main.exe
 /best-syntax.exe
 /auto-dependencies
 /auto-dependencies.exe
+/improved-dx
+/improved-dx.exe
 
 # Any other executable binaries
 /main

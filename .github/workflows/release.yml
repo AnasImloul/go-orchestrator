@@ -35,6 +35,7 @@ jobs:
         go build ./cmd/example
         go build ./examples/auto-dependencies
         go build ./examples/best-syntax
+        go build ./examples/improved-dx
     
     - name: Generate changelog
       id: changelog

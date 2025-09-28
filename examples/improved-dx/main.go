@@ -17,7 +17,7 @@ type DatabaseService interface {
 	GetInstanceID() string
 }
 
-// CacheService interface - now implements the Service interface  
+// CacheService interface - now implements the Service interface
 type CacheService interface {
 	orchestrator.Service
 	Connect() error

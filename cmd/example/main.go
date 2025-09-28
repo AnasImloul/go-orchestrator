@@ -8,12 +8,10 @@ import (
 	"github.com/AnasImloul/go-orchestrator"
 )
 
-// ExampleService interface
+// ExampleService interface - now implements the Service interface
 type ExampleService interface {
+	orchestrator.Service
 	GetName() string
-	Start() error
-	Stop() error
-	Health() string
 }
 
 // exampleService represents a simple service implementation
@@ -25,22 +23,25 @@ func (s *exampleService) GetName() string {
 	return s.name
 }
 
-func (s *exampleService) Start() error {
-	fmt.Printf("Starting service: %s\n", s.name)
+func (s *exampleService) Start(ctx context.Context) error {
+	fmt.Printf("🚀 Starting service: %s\n", s.name)
 	time.Sleep(100 * time.Millisecond)
-	fmt.Printf("Service started: %s\n", s.name)
+	fmt.Printf("   ✅ Service started: %s\n", s.name)
 	return nil
 }
 
-func (s *exampleService) Stop() error {
-	fmt.Printf("Stopping service: %s\n", s.name)
+func (s *exampleService) Stop(ctx context.Context) error {
+	fmt.Printf("🛑 Stopping service: %s\n", s.name)
 	time.Sleep(50 * time.Millisecond)
-	fmt.Printf("Service stopped: %s\n", s.name)
+	fmt.Printf("   ✅ Service stopped: %s\n", s.name)
 	return nil
 }
 
-func (s *exampleService) Health() string {
-	return "healthy"
+func (s *exampleService) Health(ctx context.Context) orchestrator.HealthStatus {
+	return orchestrator.HealthStatus{
+		Status:  "healthy",
+		Message: fmt.Sprintf("Service %s is running", s.name),
+	}
 }
 
 func main() {
@@ -50,41 +51,11 @@ func main() {
 	// Create service registry with default configuration
 	registry := orchestrator.New()
 
-	// Register a simple service definition
+	// Register a simple service definition with automatic lifecycle wiring
 	registry.Register(
 		orchestrator.NewServiceSingleton[ExampleService](
 			&exampleService{name: "example-service"},
-		).
-			WithLifecycle(
-				orchestrator.NewLifecycle().
-					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
-						service, err := orchestrator.ResolveType[ExampleService](container)
-						if err != nil {
-							return err
-						}
-						return service.Start()
-					}).
-					WithStop(func(ctx context.Context) error {
-						service, err := orchestrator.ResolveType[ExampleService](registry.Container())
-						if err != nil {
-							return err
-						}
-						return service.Stop()
-					}).
-					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
-						service, err := orchestrator.ResolveType[ExampleService](registry.Container())
-						if err != nil {
-							return orchestrator.HealthStatus{
-								Status:  "unhealthy",
-								Message: "Failed to resolve service",
-							}
-						}
-						return orchestrator.HealthStatus{
-							Status:  service.Health(),
-							Message: "Service is running",
-						}
-					}),
-			),
+		),
 	)
 
 	// Start the service registry
