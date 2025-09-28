@@ -151,7 +151,6 @@ func NewStructFactory[T any](factory interface{}, lifetime Lifetime) *orchestrat
 	return orchestrator.NewStructFactory[T](factory, lifetime)
 }
 
-
 // ResolveType resolves a service by interface type.
 // T must be an interface type, not a concrete struct.
 func ResolveType[T any](c *Container) (T, error) {
