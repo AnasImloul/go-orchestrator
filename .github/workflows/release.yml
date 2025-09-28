@@ -1,0 +1,166 @@
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Fetch all history for proper version calculation
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+    
+    - name: Run tests
+      run: |
+        go test ./...
+        go vet ./...
+        go fmt ./...
+    
+    - name: Build examples
+      run: |
+        go build ./cmd/example
+        go build ./examples/auto-dependencies
+        go build ./examples/best-syntax
+        go build ./examples/improved-dx
+        go build ./examples/robust-naming
+        go build ./examples/default-handlers
+    
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Get the latest tag
+        LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+        echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+        
+        # Get commits since last tag
+        COMMITS=$(git log --pretty=format:"- %s (%h)" ${LATEST_TAG}..HEAD)
+        echo "commits<<EOF" >> $GITHUB_OUTPUT
+        echo "$COMMITS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+    
+    - name: Determine version bump
+      id: version
+      run: |
+        LATEST_TAG="${{ steps.changelog.outputs.latest_tag }}"
+        COMMITS="${{ steps.changelog.outputs.commits }}"
+        
+        # Default to patch version
+        VERSION_BUMP="patch"
+        
+        # Check for breaking changes (major version)
+        if echo "$COMMITS" | grep -qi "BREAKING CHANGE\|!:" || echo "$COMMITS" | grep -qi "feat!:\|fix!:\|refactor!:"
+        then
+          VERSION_BUMP="major"
+        # Check for new features (minor version)
+        elif echo "$COMMITS" | grep -qi "feat:"
+        then
+          VERSION_BUMP="minor"
+        fi
+        
+        echo "version_bump=$VERSION_BUMP" >> $GITHUB_OUTPUT
+        echo "Version bump: $VERSION_BUMP"
+    
+    - name: Calculate next version
+      id: next_version
+      run: |
+        LATEST_TAG="${{ steps.changelog.outputs.latest_tag }}"
+        VERSION_BUMP="${{ steps.version.outputs.version_bump }}"
+        
+        # Remove 'v' prefix if present
+        VERSION=${LATEST_TAG#v}
+        
+        # Split version into parts
+        IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+        
+        # Increment based on version bump
+        case $VERSION_BUMP in
+          major)
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+            ;;
+          minor)
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            ;;
+          patch)
+            PATCH=$((PATCH + 1))
+            ;;
+        esac
+        
+        NEXT_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+        echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+        echo "Next version: $NEXT_VERSION"
+    
+    - name: Check if version already exists
+      id: check_version
+      run: |
+        NEXT_VERSION="${{ steps.next_version.outputs.next_version }}"
+        if git tag -l | grep -q "^${NEXT_VERSION}$"
+        then
+          echo "Version $NEXT_VERSION already exists, skipping release"
+          echo "skip_release=true" >> $GITHUB_OUTPUT
+        else
+          echo "skip_release=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Create and push tag
+      if: steps.check_version.outputs.skip_release == 'false'
+      run: |
+        NEXT_VERSION="${{ steps.next_version.outputs.next_version }}"
+        COMMITS="${{ steps.changelog.outputs.commits }}"
+        
+        # Create annotated tag with changelog
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # Create tag message
+        TAG_MESSAGE="Release $NEXT_VERSION
+
+        Changes:
+        $COMMITS"
+        
+        git tag -a "$NEXT_VERSION" -m "$TAG_MESSAGE"
+        git push origin "$NEXT_VERSION"
+        
+        echo "Created and pushed tag: $NEXT_VERSION"
+    
+    - name: Create GitHub Release
+      if: steps.check_version.outputs.skip_release == 'false'
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.next_version.outputs.next_version }}
+        name: Release ${{ steps.next_version.outputs.next_version }}
+        body: |
+          ## Changes in this release:
+          
+          ${{ steps.changelog.outputs.commits }}
+          
+          ## Installation
+          
+          ```bash
+          go get github.com/AnasImloul/go-orchestrator@${{ steps.next_version.outputs.next_version }}
+          ```
+          
+          ## Documentation
+          
+          - [README](https://github.com/AnasImloul/go-orchestrator/blob/main/README.md)
+          - [Examples](https://github.com/AnasImloul/go-orchestrator/tree/main/examples)
+        draft: false
+        prerelease: false

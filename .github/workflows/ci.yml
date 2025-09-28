@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop, 'feature/*' ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+    
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+      continue-on-error: true
+    
+    - name: Download dependencies
+      run: go mod download || echo "No dependencies to download"
+    
+    - name: Verify dependencies
+      run: go mod verify || echo "No dependencies to verify"
+    
+    - name: Run tests
+      run: go test -v ./...
+    
+    - name: Run tests with coverage
+      run: go test -v -coverprofile=coverage.out ./...
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.out
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+    
+    - name: Run go vet
+      run: go vet ./...
+    
+    - name: Run go fmt check
+      run: |
+        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+          echo "The following files are not formatted:"
+          gofmt -s -l .
+          exit 1
+        fi
+    
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v3
+      with:
+        version: latest
+        args: --timeout=5m
+    
+    - name: Build examples
+      run: |
+        go build ./cmd/example
+        go build ./examples/auto-dependencies
+        go build ./examples/best-syntax
+    
+    - name: Build for multiple platforms
+      run: |
+        mkdir -p bin
+        GOOS=linux GOARCH=amd64 go build -o bin/example-linux-amd64 ./cmd/example
+        GOOS=windows GOARCH=amd64 go build -o bin/example-windows-amd64.exe ./cmd/example
+        GOOS=darwin GOARCH=amd64 go build -o bin/example-darwin-amd64 ./cmd/example
+        GOOS=darwin GOARCH=arm64 go build -o bin/example-darwin-arm64 ./cmd/example

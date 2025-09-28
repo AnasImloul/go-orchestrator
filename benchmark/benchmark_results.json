@@ -1,0 +1,50 @@
+[
+  {
+    "service_count": 10,
+    "pattern": "linear",
+    "dag_generation_ms": 13083,
+    "registration_ms": 1708,
+    "start_time_ms": 495833,
+    "stop_time_ms": 34011500,
+    "total_time_ms": 135557042,
+    "start_throughput_per_sec": 20168.080785264392,
+    "stop_throughput_per_sec": 294.01819972656307,
+    "success": true
+  },
+  {
+    "service_count": 10,
+    "pattern": "tree",
+    "dag_generation_ms": 2042,
+    "registration_ms": 3125,
+    "start_time_ms": 347292,
+    "stop_time_ms": 33182625,
+    "total_time_ms": 134555250,
+    "start_throughput_per_sec": 28794.213514852054,
+    "stop_throughput_per_sec": 301.36253536301,
+    "success": true
+  },
+  {
+    "service_count": 20,
+    "pattern": "linear",
+    "dag_generation_ms": 8000,
+    "registration_ms": 5000,
+    "start_time_ms": 499208,
+    "stop_time_ms": 67851167,
+    "total_time_ms": 169388250,
+    "start_throughput_per_sec": 40063.460521466004,
+    "stop_throughput_per_sec": 294.7628004688556,
+    "success": true
+  },
+  {
+    "service_count": 20,
+    "pattern": "tree",
+    "dag_generation_ms": 10625,
+    "registration_ms": 4750,
+    "start_time_ms": 606500,
+    "stop_time_ms": 68693000,
+    "total_time_ms": 170345750,
+    "start_throughput_per_sec": 32976.09233305853,
+    "stop_throughput_per_sec": 291.15048112617006,
+    "success": true
+  }
+]
