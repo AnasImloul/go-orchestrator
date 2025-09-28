@@ -65,10 +65,17 @@ func isLikelyServiceOrRegisteredStruct(paramType reflect.Type) bool {
 // isLikelyServiceStruct determines if a struct is likely to be a service (not a config object)
 func isLikelyServiceStruct(structType reflect.Type) bool {
 	typeName := structType.Name()
+	packagePath := structType.PkgPath()
 	
-	// Exclude common configuration/utility types
+	// Special case: if the type name is exactly "Config" and it's from a config package,
+	// it's likely the main application config service, not a configuration struct
+	if typeName == "Config" && strings.Contains(packagePath, "config") {
+		return true
+	}
+	
+	// Exclude common configuration/utility types (but be more specific)
 	excludedSuffixes := []string{
-		"Config", "Configuration", "Settings", "Options", "Params", "Parameters",
+		"Configuration", "Settings", "Options", "Params", "Parameters",
 		"Request", "Response", "Message", "Event", "Data", "Model", "Entity",
 		"DTO", "VO", "PO", "BO", "DO", // Common data transfer object patterns
 	}
@@ -79,9 +86,21 @@ func isLikelyServiceStruct(structType reflect.Type) bool {
 		}
 	}
 	
-	// Exclude common configuration prefixes
+	// Exclude specific configuration struct patterns (but not the main Config)
+	excludedPatterns := []string{
+		"DatabaseConfig", "RedisConfig", "LoggingConfig", "MetricsConfig",
+		"AuthConfig", "ServerConfig", "ClientConfig", "ConnectionConfig",
+	}
+	
+	for _, pattern := range excludedPatterns {
+		if strings.Contains(typeName, pattern) {
+			return false
+		}
+	}
+	
+	// Exclude common configuration prefixes (but not "Config" itself)
 	excludedPrefixes := []string{
-		"Config", "Settings", "Options", "Params",
+		"Settings", "Options", "Params",
 	}
 	
 	for _, prefix := range excludedPrefixes {
