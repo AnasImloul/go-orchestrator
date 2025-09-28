@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/AnasImloul/go-orchestrator"
 )
@@ -16,7 +17,7 @@ type DatabaseService interface {
 	GetInstanceID() string
 }
 
-// CacheService interface - now implements the Service interface
+// CacheService interface - now implements the Service interface  
 type CacheService interface {
 	orchestrator.Service
 	Connect() error
@@ -39,11 +40,13 @@ type databaseService struct {
 
 func (d *databaseService) Start(ctx context.Context) error {
 	fmt.Printf("🔌 Database starting connection to %s:%d (ID: %s)\n", d.host, d.port, d.id)
+	time.Sleep(100 * time.Millisecond) // Simulate connection time
 	return d.Connect()
 }
 
 func (d *databaseService) Stop(ctx context.Context) error {
 	fmt.Printf("🔌 Database stopping connection to %s:%d (ID: %s)\n", d.host, d.port, d.id)
+	time.Sleep(50 * time.Millisecond) // Simulate disconnection time
 	return d.Disconnect()
 }
 
@@ -77,11 +80,13 @@ type cacheService struct {
 
 func (c *cacheService) Start(ctx context.Context) error {
 	fmt.Printf("💾 Cache starting connection to %s:%d (ID: %s)\n", c.host, c.port, c.id)
+	time.Sleep(75 * time.Millisecond) // Simulate connection time
 	return c.Connect()
 }
 
 func (c *cacheService) Stop(ctx context.Context) error {
 	fmt.Printf("💾 Cache stopping connection to %s:%d (ID: %s)\n", c.host, c.port, c.id)
+	time.Sleep(25 * time.Millisecond) // Simulate disconnection time
 	return c.Disconnect()
 }
 
@@ -118,12 +123,14 @@ func (a *apiService) Start(ctx context.Context) error {
 	fmt.Printf("🚀 API starting on port %d (ID: %s)\n", a.port, a.id)
 	fmt.Printf("   - Database ID: %s\n", a.db.GetInstanceID())
 	fmt.Printf("   - Cache ID: %s\n", a.cache.GetInstanceID())
+	time.Sleep(150 * time.Millisecond) // Simulate startup time
 	fmt.Printf("   ✅ API server started successfully\n")
 	return nil
 }
 
 func (a *apiService) Stop(ctx context.Context) error {
 	fmt.Printf("🛑 API stopping on port %d (ID: %s)\n", a.port, a.id)
+	time.Sleep(75 * time.Millisecond) // Simulate shutdown time
 	fmt.Printf("   ✅ API server stopped successfully\n")
 	return nil
 }
@@ -140,8 +147,11 @@ func (a *apiService) GetInstanceID() string {
 }
 
 func main() {
-	fmt.Println("🎯 Automatic Dependency Discovery Example")
-	fmt.Println("==========================================")
+	fmt.Println("🎯 Improved Developer Experience Example")
+	fmt.Println("========================================")
+	fmt.Println("✨ No more boilerplate lifecycle configuration!")
+	fmt.Println("✨ Just implement the Service interface and you're done!")
+	fmt.Println()
 
 	// Create service registry
 	registry := orchestrator.New()
@@ -177,16 +187,26 @@ func main() {
 
 	// Start the service registry
 	ctx := context.Background()
-	fmt.Println("\n🚀 Starting service registry...")
+	fmt.Println("🚀 Starting service registry...")
 	if err := registry.Start(ctx); err != nil {
 		log.Fatalf("Failed to start service registry: %v", err)
 	}
 
-	// Show that dependencies were automatically resolved
 	fmt.Println("\n✅ Service registry started successfully!")
+	fmt.Println("   - All lifecycle methods were automatically wired")
 	fmt.Println("   - Dependencies were automatically discovered and injected")
-	fmt.Println("   - Lifecycle methods were automatically wired")
 	fmt.Println("   - No manual configuration needed!")
+
+	// Check health
+	fmt.Println("\n📊 Checking service health...")
+	health := registry.Health(ctx)
+	for name, status := range health {
+		fmt.Printf("   %s: %s - %s\n", name, status.Status, status.Message)
+	}
+
+	// Run for a bit
+	fmt.Println("\n⏱️  Running for 2 seconds...")
+	time.Sleep(2 * time.Second)
 
 	// Stop the service registry
 	fmt.Println("\n🛑 Stopping service registry...")
@@ -195,4 +215,5 @@ func main() {
 	}
 
 	fmt.Println("✅ Service registry stopped successfully!")
+	fmt.Println("\n🎉 That's it! No boilerplate, just clean, simple service registration!")
 }
