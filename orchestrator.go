@@ -424,7 +424,7 @@ func (sr *ServiceRegistry) Start(ctx context.Context) error {
 	// Register all service definitions as lifecycle components
 	for name, serviceDef := range sr.services {
 		component := &serviceComponent{
-			serviceDef: serviceDef,
+			serviceDef:      serviceDef,
 			serviceRegistry: sr,
 		}
 
@@ -568,7 +568,6 @@ func (sd *ServiceDefinition) WithLifetime(lifetime Lifetime) *ServiceDefinition 
 	return sd
 }
 
-
 // WithServiceFactory adds a service factory to the service definition using generics.
 // T must be an interface type that the factory returns.
 func WithServiceFactory[T any](factory func(ctx context.Context, container *Container) (T, error)) func(*ServiceDefinition) *ServiceDefinition {
@@ -620,7 +619,6 @@ func WithLifecycleFor[T any](sd *ServiceDefinition, sr *ServiceRegistry) *Lifecy
 	}
 }
 
-
 // NewServiceWithFactory creates a new service definition with a service factory using the cleanest syntax.
 // This is the most concise way to create a service definition with a factory.
 func NewServiceWithFactory[T any](name string, factory func(ctx context.Context, container *Container) (T, error), lifetime Lifetime) *ServiceDefinition {
@@ -636,13 +634,13 @@ func NewServiceWithAutoFactory[T any](name string, factory interface{}, lifetime
 	wrapperFactory := func(ctx context.Context, container *Container) (T, error) {
 		return callFactoryWithAutoDependencies[T](ctx, container, factory)
 	}
-	
+
 	// Create the service definition with the wrapper factory
 	serviceDef := NewServiceWithFactory(name, wrapperFactory, lifetime)
-	
+
 	// Automatically discover and add dependencies based on factory parameters
 	autoDiscoverDependencies(serviceDef, factory)
-	
+
 	return serviceDef
 }
 
@@ -673,19 +671,19 @@ func (sd *ServiceDefinition) WithAutoDependencies() *ServiceDefinition {
 	if len(sd.Services) == 0 {
 		return sd
 	}
-	
+
 	lastService := &sd.Services[len(sd.Services)-1]
 	if lastService.Factory == nil {
 		return sd
 	}
-	
+
 	// Create a wrapper factory that automatically resolves dependencies
 	originalFactory := lastService.Factory
 	lastService.Factory = func(ctx context.Context, container *Container) (interface{}, error) {
 		// Use reflection to analyze the original factory function and resolve dependencies
 		return resolveDependenciesAndCallFactory(ctx, container, originalFactory)
 	}
-	
+
 	return sd
 }
 
@@ -700,20 +698,20 @@ func (sd *ServiceDefinition) WithMetadata(key, value string) *ServiceDefinition 
 func autoDiscoverDependencies(serviceDef *ServiceDefinition, factory interface{}) {
 	factoryValue := reflect.ValueOf(factory)
 	factoryType := factoryValue.Type()
-	
+
 	// Check if it's a function
 	if factoryType.Kind() != reflect.Func {
 		return
 	}
-	
+
 	// Get the number of parameters
 	numIn := factoryType.NumIn()
 	dependencies := make([]string, 0, numIn)
-	
+
 	// Analyze each parameter to determine dependency names
 	for i := 0; i < numIn; i++ {
 		paramType := factoryType.In(i)
-		
+
 		// Convert type to a dependency name
 		// For interfaces, we use a simplified name based on the type
 		dependencyName := typeToDependencyName(paramType)
@@ -721,7 +719,7 @@ func autoDiscoverDependencies(serviceDef *ServiceDefinition, factory interface{}
 			dependencies = append(dependencies, dependencyName)
 		}
 	}
-	
+
 	// Add the discovered dependencies to the service definition
 	if len(dependencies) > 0 {
 		serviceDef.Dependencies = append(serviceDef.Dependencies, dependencies...)
@@ -733,12 +731,12 @@ func autoDiscoverDependencies(serviceDef *ServiceDefinition, factory interface{}
 // to use type tags or a more sophisticated mapping.
 func typeToDependencyName(paramType reflect.Type) string {
 	typeName := paramType.String()
-	
+
 	// Remove pointer prefix if present
 	if paramType.Kind() == reflect.Ptr {
 		typeName = paramType.Elem().String()
 	}
-	
+
 	// Convert common patterns to dependency names
 	switch {
 	case strings.Contains(typeName, "DatabaseService"):
@@ -772,47 +770,47 @@ func typeToDependencyName(paramType reflect.Type) string {
 // and call the factory function with the resolved dependencies.
 func callFactoryWithAutoDependencies[T any](ctx context.Context, container *Container, factory interface{}) (T, error) {
 	var zero T
-	
+
 	factoryValue := reflect.ValueOf(factory)
 	factoryType := factoryValue.Type()
-	
+
 	// Check if it's a function
 	if factoryType.Kind() != reflect.Func {
 		return zero, fmt.Errorf("factory must be a function, got %s", factoryType.Kind())
 	}
-	
+
 	// Get the number of parameters
 	numIn := factoryType.NumIn()
 	args := make([]reflect.Value, numIn)
-	
+
 	// Resolve each parameter as a dependency
 	for i := 0; i < numIn; i++ {
 		paramType := factoryType.In(i)
-		
+
 		// Try to resolve the dependency from the container
 		dependency, err := container.Resolve(paramType)
 		if err != nil {
 			return zero, fmt.Errorf("failed to resolve dependency %d of type %s: %w", i, paramType.String(), err)
 		}
-		
+
 		args[i] = reflect.ValueOf(dependency)
 	}
-	
+
 	// Call the factory function
 	results := factoryValue.Call(args)
-	
+
 	// Handle the return values
 	if len(results) == 0 {
 		return zero, fmt.Errorf("factory function must return at least one value")
 	}
-	
+
 	// Check if the first result is an error
 	if len(results) > 1 {
 		if err, ok := results[1].Interface().(error); ok && err != nil {
 			return zero, err
 		}
 	}
-	
+
 	// Return the first result
 	return results[0].Interface().(T), nil
 }
@@ -822,46 +820,46 @@ func callFactoryWithAutoDependencies[T any](ctx context.Context, container *Cont
 func resolveDependenciesAndCallFactory(ctx context.Context, container *Container, factory interface{}) (interface{}, error) {
 	factoryValue := reflect.ValueOf(factory)
 	factoryType := factoryValue.Type()
-	
+
 	// Check if it's a function
 	if factoryType.Kind() != reflect.Func {
 		return nil, fmt.Errorf("factory must be a function, got %s", factoryType.Kind())
 	}
-	
+
 	// Get the number of parameters (should be 2: context.Context and *Container)
 	numIn := factoryType.NumIn()
 	if numIn != 2 {
 		return nil, fmt.Errorf("factory function must have exactly 2 parameters (context.Context, *Container), got %d", numIn)
 	}
-	
+
 	// Verify the first parameter is context.Context
 	if !factoryType.In(0).Implements(reflect.TypeOf((*context.Context)(nil)).Elem()) {
 		return nil, fmt.Errorf("first parameter must be context.Context")
 	}
-	
+
 	// Verify the second parameter is *Container
 	if factoryType.In(1) != reflect.TypeOf((*Container)(nil)) {
 		return nil, fmt.Errorf("second parameter must be *Container")
 	}
-	
+
 	// Call the original factory with the provided parameters
 	args := []reflect.Value{
 		reflect.ValueOf(ctx),
 		reflect.ValueOf(container),
 	}
-	
+
 	results := factoryValue.Call(args)
-	
+
 	// Handle the return values (should be (interface{}, error))
 	if len(results) != 2 {
 		return nil, fmt.Errorf("factory function must return exactly 2 values (interface{}, error), got %d", len(results))
 	}
-	
+
 	// Check for error
 	if !results[1].IsNil() {
 		return nil, results[1].Interface().(error)
 	}
-	
+
 	return results[0].Interface(), nil
 }
 

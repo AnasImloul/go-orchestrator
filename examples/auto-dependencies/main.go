@@ -104,16 +104,16 @@ func main() {
 
 	// Register database service definition with instance
 	registry.Register(
-		orchestrator.NewServiceWithInstance("database", 
-			DatabaseService(&databaseService{host: "localhost", port: 5432, id: "db-001"}), 
+		orchestrator.NewServiceWithInstance("database",
+			DatabaseService(&databaseService{host: "localhost", port: 5432, id: "db-001"}),
 			orchestrator.Singleton,
 		),
 	)
 
 	// Register cache service definition with instance
 	registry.Register(
-		orchestrator.NewServiceWithInstance("cache", 
-			CacheService(&cacheService{host: "localhost", port: 6379, id: "cache-001"}), 
+		orchestrator.NewServiceWithInstance("cache",
+			CacheService(&cacheService{host: "localhost", port: 6379, id: "cache-001"}),
 			orchestrator.Singleton,
 		),
 	)

@@ -141,7 +141,7 @@ func main() {
 	// Method 3: Factory-based service with dependencies using NewServiceWithFactory
 	registry.Register(
 		orchestrator.WithLifecycleFor[APIService](
-			orchestrator.NewServiceWithFactory("api", 
+			orchestrator.NewServiceWithFactory("api",
 				func(ctx context.Context, container *orchestrator.Container) (APIService, error) {
 					db, err := orchestrator.ResolveType[DatabaseService](container)
 					if err != nil {
@@ -152,7 +152,7 @@ func main() {
 						return nil, err
 					}
 					return &apiService{port: 8080, db: db, cache: cache}, nil
-				}, 
+				},
 				orchestrator.Singleton,
 			).WithDependencies("database", "cache"),
 			registry,
@@ -191,15 +191,15 @@ func main() {
 		// Singleton: Same instance every time
 		db1, _ := orchestrator.ResolveType[DatabaseService](container)
 		db2, _ := orchestrator.ResolveType[DatabaseService](container)
-		fmt.Printf("Database (Singleton): %s == %s? %t\n", 
-			db1.GetConnectionID(), db2.GetConnectionID(), 
+		fmt.Printf("Database (Singleton): %s == %s? %t\n",
+			db1.GetConnectionID(), db2.GetConnectionID(),
 			db1.GetConnectionID() == db2.GetConnectionID())
 
 		// Transient: New instance every time
 		cache1, _ := orchestrator.ResolveType[CacheService](container)
 		cache2, _ := orchestrator.ResolveType[CacheService](container)
-		fmt.Printf("Cache (Transient): %s == %s? %t\n", 
-			cache1.GetInstanceID(), cache2.GetInstanceID(), 
+		fmt.Printf("Cache (Transient): %s == %s? %t\n",
+			cache1.GetInstanceID(), cache2.GetInstanceID(),
 			cache1.GetInstanceID() == cache2.GetInstanceID())
 
 		time.Sleep(100 * time.Millisecond)
