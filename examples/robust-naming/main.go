@@ -188,10 +188,10 @@ func main() {
 	// Method 1: Automatic naming with full package path
 	// The library automatically creates unique names by including the package path
 	fmt.Println("📦 Method 1: Automatic naming with full package path")
-	fmt.Println("   - github.com/user/postgres.DatabaseService -> github-com-user-postgres-database")
-	fmt.Println("   - github.com/user/mysql.DatabaseService -> github-com-user-mysql-database")
-	fmt.Println("   - github.com/user/redis.CacheService -> github-com-user-redis-cache")
-	fmt.Println("   - github.com/user/memcached.CacheService -> github-com-user-memcached-cache")
+	fmt.Println("   - github.com/user/postgres.DatabaseService -> github.com/user/postgres::DatabaseService")
+	fmt.Println("   - github.com/user/mysql.DatabaseService -> github.com/user/mysql::DatabaseService")
+	fmt.Println("   - github.com/user/redis.CacheService -> github.com/user/redis::CacheService")
+	fmt.Println("   - github.com/user/memcached.CacheService -> github.com/user/memcached::CacheService")
 	fmt.Println()
 
 	registry.Register(

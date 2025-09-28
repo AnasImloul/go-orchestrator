@@ -703,9 +703,10 @@ func autoDiscoverDependenciesTyped[T any](serviceDef *TypedServiceDefinition[T],
 
 // inferServiceNameFromType automatically infers a robust service name from a reflect.Type.
 // It creates unique names by including the full package path to avoid conflicts.
+// Uses standard naming convention: "package::ServiceName"
 // Examples:
-//   - "github.com/user/pkg1.DatabaseService" -> "github-com-user-pkg1-database"
-//   - "github.com/user/pkg2.DatabaseService" -> "github-com-user-pkg2-database"
+//   - "github.com/user/pkg1.DatabaseService" -> "github.com/user/pkg1::DatabaseService"
+//   - "github.com/user/pkg2.DatabaseService" -> "github.com/user/pkg2::DatabaseService"
 func inferServiceNameFromType(serviceType reflect.Type) string {
 	if serviceType == nil {
 		return "service"
@@ -723,58 +724,45 @@ func inferServiceNameFromType(serviceType reflect.Type) string {
 	packagePath := typeName[:lastDot]
 	typeNameOnly := typeName[lastDot+1:]
 	
-	// Convert package path to a safe identifier
-	// Replace dots, slashes, and hyphens with hyphens
-	packageName := strings.ReplaceAll(packagePath, "/", "-")
-	packageName = strings.ReplaceAll(packageName, ".", "-")
-	packageName = strings.ReplaceAll(packageName, "_", "-")
-	packageName = strings.ToLower(packageName)
-	
 	// Clean up the type name
 	typeNameClean := sanitizeServiceName(typeNameOnly)
 	
-	// Combine package and type name
-	if packageName != "" {
-		return packageName + "-" + typeNameClean
+	// Use standard format: package::ServiceName
+	if packagePath != "" {
+		return packagePath + "::" + typeNameClean
 	}
 	return typeNameClean
 }
 
 // sanitizeServiceName cleans up a type name to create a valid service name.
+// Preserves the original Go naming convention (PascalCase).
 func sanitizeServiceName(typeName string) string {
-	// Convert to lowercase
-	serviceName := strings.ToLower(typeName)
+	// Keep original case for Go naming convention
+	serviceName := typeName
 	
-	// Remove "Service" suffix if present
-	if strings.HasSuffix(serviceName, "service") {
-		serviceName = strings.TrimSuffix(serviceName, "service")
+	// Remove "Service" suffix if present (case-insensitive)
+	if strings.HasSuffix(strings.ToLower(serviceName), "service") {
+		serviceName = serviceName[:len(serviceName)-7] // Remove "Service"
 	}
 	
-	// Remove "Interface" suffix if present
-	if strings.HasSuffix(serviceName, "interface") {
-		serviceName = strings.TrimSuffix(serviceName, "interface")
+	// Remove "Interface" suffix if present (case-insensitive)
+	if strings.HasSuffix(strings.ToLower(serviceName), "interface") {
+		serviceName = serviceName[:len(serviceName)-9] // Remove "Interface"
 	}
 	
-	// Replace underscores with hyphens
-	serviceName = strings.ReplaceAll(serviceName, "_", "-")
-	
-	// Remove any remaining non-alphanumeric characters except hyphens
+	// Remove any non-alphanumeric characters except underscores
 	var result strings.Builder
 	for _, r := range serviceName {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
 			result.WriteRune(r)
 		}
 	}
 	
 	serviceName = result.String()
 	
-	// Remove leading/trailing hyphens and collapse multiple hyphens
-	serviceName = strings.Trim(serviceName, "-")
-	serviceName = strings.ReplaceAll(serviceName, "--", "-")
-	
 	// Ensure we have a valid name
 	if serviceName == "" {
-		return "service"
+		return "Service"
 	}
 	
 	return serviceName
