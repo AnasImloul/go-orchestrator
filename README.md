@@ -220,16 +220,17 @@ The new API provides several key improvements:
 - **🔧 Less Verbose**: 60% reduction in boilerplate code
 - **⚡ Intuitive**: Natural fluent API that's easy to understand
 - **🛡️ Robust**: Runtime type verification and error handling
+- **🏭 Factory-Based**: All services use factories for consistent lifetime management
 - **🔄 Backward Compatible**: All existing code continues to work
 
 #### Service Registration (Best Syntax - Recommended)
 
-**Ultra-Clean Syntax:**
+**Ultra-Clean Syntax (Factory-Based):**
 ```go
 // One-liner for simple services with type-safe component lifecycle
 app.AddFeature(
     orchestrator.WithComponentFor[DatabaseService](
-        orchestrator.NewFeatureWithService("database", DatabaseService(&databaseService{host: "localhost", port: 5432}), orchestrator.Singleton),
+        orchestrator.NewFeatureWithInstance("database", DatabaseService(&databaseService{host: "localhost", port: 5432}), orchestrator.Singleton),
         app,
     ).
         WithStartFor(func(db DatabaseService) error { return db.Connect() }).
@@ -262,11 +263,59 @@ app.AddFeature(
 )
 ```
 
+**Automatic Dependency Discovery (NEW!):**
+```go
+// Ultra-clean syntax with automatic dependency injection AND discovery
+app.AddFeature(
+    orchestrator.NewFeatureWithAutoFactory[APIService]("api",
+        func(db DatabaseService, cache CacheService) APIService {
+            return &apiService{port: 8080, db: db, cache: cache}
+        },
+        orchestrator.Singleton,
+    ).
+        WithComponent(
+            orchestrator.NewComponent().
+                WithStart(func(ctx context.Context, container *orchestrator.Container) error {
+                    api, _ := orchestrator.ResolveType[APIService](container)
+                    return api.Start()
+                }).
+                WithStop(func(ctx context.Context) error {
+                    api, _ := orchestrator.ResolveType[APIService](app.Container())
+                    return api.Stop()
+                }),
+        ),
+)
+```
+
+#### Automatic Dependency Discovery Benefits
+
+The new `NewFeatureWithAutoFactory` provides:
+
+- **🎯 Zero Boilerplate**: No manual dependency resolution OR declaration needed
+- **🔍 Type-Safe**: Compile-time verification of dependency types
+- **⚡ Reflection-Based**: Automatic parameter scanning and injection
+- **🛡️ Error Handling**: Clear error messages for missing dependencies
+- **📝 Clean Syntax**: Factory functions only need to declare their dependencies
+- **🔗 Auto-Discovery**: Dependencies are automatically discovered from function parameters
+- **🚀 Zero Configuration**: No need for `WithDependencies()` calls
+
+#### Factory-Only Approach Benefits
+
+All services now use factories internally, which provides:
+
+- **Consistent Lifetime Management**: Transient services create new instances via factory calls
+- **No Cloning Complexity**: Eliminates the need for deep cloning logic
+- **Simplified Architecture**: Single code path for all service creation
+- **Better Performance**: Factory calls are more efficient than cloning
+- **Clearer Intent**: Factory functions make service creation explicit
+
 #### Legacy Syntax (Still Supported)
 ```go
 // Original verbose syntax - still works but not recommended for new code
 app.AddFeature(
-    orchestrator.WithService[DatabaseService](&databaseService{host: "localhost", port: 5432})(
+    orchestrator.WithServiceFactory[DatabaseService](func(ctx context.Context, container *orchestrator.Container) (DatabaseService, error) {
+        return &databaseService{host: "localhost", port: 5432}, nil
+    })(
         orchestrator.NewFeature("database"),
     ).
         WithLifetime(orchestrator.Singleton).
@@ -463,6 +512,7 @@ See `examples/external-usage/main.go` for a complete example showing how to use 
 # Best syntax examples (recommended)
 go run examples/best-syntax/main.go
 go run examples/ultra-clean/main.go
+go run examples/auto-dependencies/main.go
 
 # Legacy examples (still supported)
 go run examples/simple/main.go

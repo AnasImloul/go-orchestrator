@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -567,33 +568,6 @@ func (f *Feature) WithLifetime(lifetime Lifetime) *Feature {
 	return f
 }
 
-// WithService adds a service to the feature using generics.
-// T must be an interface type that the instance implements.
-func WithService[T any](instance interface{}) func(*Feature) *Feature {
-	return func(f *Feature) *Feature {
-		serviceType := reflect.TypeOf((*T)(nil)).Elem()
-
-		// Verify that the instance implements the interface T
-		if !reflect.TypeOf(instance).Implements(serviceType) {
-			panic(fmt.Sprintf("instance of type %T does not implement interface %s", instance, serviceType.String()))
-		}
-
-		// Create a factory that creates new instances
-		originalInstance := instance
-		factory := func(ctx context.Context, container *Container) (interface{}, error) {
-			// Always create a new instance by cloning the original
-			// The DI container will handle lifetime management (singleton caching, etc.)
-			return cloneInstance(originalInstance), nil
-		}
-
-		f.Services = append(f.Services, ServiceConfig{
-			Type:     serviceType,
-			Factory:  factory,
-			Lifetime: Singleton, // Default to Singleton, can be overridden with WithLifetime
-		})
-		return f
-	}
-}
 
 // WithServiceFactory adds a service factory to the feature using generics.
 // T must be an interface type that the factory returns.
@@ -646,12 +620,6 @@ func WithComponentFor[T any](f *Feature, app *App) *ComponentBuilderFor[T] {
 	}
 }
 
-// NewFeatureWithService creates a new feature with a service instance using the cleanest syntax.
-// This is the most concise way to create a feature with a service.
-func NewFeatureWithService[T any](name string, instance T, lifetime Lifetime) *Feature {
-	return WithService[T](instance)(NewFeature(name)).
-		WithLifetime(lifetime)
-}
 
 // NewFeatureWithFactory creates a new feature with a service factory using the cleanest syntax.
 // This is the most concise way to create a feature with a factory.
@@ -660,9 +628,64 @@ func NewFeatureWithFactory[T any](name string, factory func(ctx context.Context,
 		WithLifetime(lifetime)
 }
 
+// NewFeatureWithAutoFactory creates a new feature with automatic dependency injection.
+// The factory function should only take the dependencies as parameters, and they will be automatically resolved.
+// Dependencies are also automatically discovered and added to the dependency graph.
+func NewFeatureWithAutoFactory[T any](name string, factory interface{}, lifetime Lifetime) *Feature {
+	// Create a wrapper factory that handles automatic dependency injection
+	wrapperFactory := func(ctx context.Context, container *Container) (T, error) {
+		return callFactoryWithAutoDependencies[T](ctx, container, factory)
+	}
+	
+	// Create the feature with the wrapper factory
+	feature := NewFeatureWithFactory(name, wrapperFactory, lifetime)
+	
+	// Automatically discover and add dependencies based on factory parameters
+	autoDiscoverDependencies(feature, factory)
+	
+	return feature
+}
+
+// NewFeatureWithInstance creates a new feature with a service instance by wrapping it in a factory.
+// This is the recommended way to register simple services without dependencies.
+func NewFeatureWithInstance[T any](name string, instance T, lifetime Lifetime) *Feature {
+	// Create a factory that returns the instance
+	factory := func(ctx context.Context, container *Container) (T, error) {
+		// For Transient services, create a new instance by cloning
+		if lifetime == Transient {
+			return cloneInstance(instance).(T), nil
+		}
+		// For Singleton and Scoped, return the same instance
+		return instance, nil
+	}
+	return NewFeatureWithFactory(name, factory, lifetime)
+}
+
 // WithRetryConfig sets the retry configuration for the feature.
 func (f *Feature) WithRetryConfig(config *lifecycle.RetryConfig) *Feature {
 	f.RetryConfig = config
+	return f
+}
+
+// WithAutoDependencies enables automatic dependency discovery for the last registered service.
+// This will scan the factory function parameters and automatically resolve dependencies.
+func (f *Feature) WithAutoDependencies() *Feature {
+	if len(f.Services) == 0 {
+		return f
+	}
+	
+	lastService := &f.Services[len(f.Services)-1]
+	if lastService.Factory == nil {
+		return f
+	}
+	
+	// Create a wrapper factory that automatically resolves dependencies
+	originalFactory := lastService.Factory
+	lastService.Factory = func(ctx context.Context, container *Container) (interface{}, error) {
+		// Use reflection to analyze the original factory function and resolve dependencies
+		return resolveDependenciesAndCallFactory(ctx, container, originalFactory)
+	}
+	
 	return f
 }
 
@@ -670,6 +693,176 @@ func (f *Feature) WithRetryConfig(config *lifecycle.RetryConfig) *Feature {
 func (f *Feature) WithMetadata(key, value string) *Feature {
 	f.Metadata[key] = value
 	return f
+}
+
+// autoDiscoverDependencies analyzes the factory function parameters and automatically
+// adds them as dependencies to the feature.
+func autoDiscoverDependencies(feature *Feature, factory interface{}) {
+	factoryValue := reflect.ValueOf(factory)
+	factoryType := factoryValue.Type()
+	
+	// Check if it's a function
+	if factoryType.Kind() != reflect.Func {
+		return
+	}
+	
+	// Get the number of parameters
+	numIn := factoryType.NumIn()
+	dependencies := make([]string, 0, numIn)
+	
+	// Analyze each parameter to determine dependency names
+	for i := 0; i < numIn; i++ {
+		paramType := factoryType.In(i)
+		
+		// Convert type to a dependency name
+		// For interfaces, we use a simplified name based on the type
+		dependencyName := typeToDependencyName(paramType)
+		if dependencyName != "" {
+			dependencies = append(dependencies, dependencyName)
+		}
+	}
+	
+	// Add the discovered dependencies to the feature
+	if len(dependencies) > 0 {
+		feature.Dependencies = append(feature.Dependencies, dependencies...)
+	}
+}
+
+// typeToDependencyName converts a Go type to a dependency name.
+// This is a simple heuristic - in a real implementation, you might want
+// to use type tags or a more sophisticated mapping.
+func typeToDependencyName(paramType reflect.Type) string {
+	typeName := paramType.String()
+	
+	// Remove pointer prefix if present
+	if paramType.Kind() == reflect.Ptr {
+		typeName = paramType.Elem().String()
+	}
+	
+	// Convert common patterns to dependency names
+	switch {
+	case strings.Contains(typeName, "DatabaseService"):
+		return "database"
+	case strings.Contains(typeName, "CacheService"):
+		return "cache"
+	case strings.Contains(typeName, "LoggerService"):
+		return "logger"
+	case strings.Contains(typeName, "APIService"):
+		return "api"
+	case strings.Contains(typeName, "MetricsService"):
+		return "metrics"
+	case strings.Contains(typeName, "LoggingService"):
+		return "logging"
+	default:
+		// For unknown types, try to extract a reasonable name
+		// Remove package prefix and "Service" suffix
+		parts := strings.Split(typeName, ".")
+		if len(parts) > 0 {
+			name := parts[len(parts)-1]
+			if strings.HasSuffix(name, "Service") {
+				return strings.ToLower(strings.TrimSuffix(name, "Service"))
+			}
+			return strings.ToLower(name)
+		}
+		return ""
+	}
+}
+
+// callFactoryWithAutoDependencies uses reflection to automatically resolve dependencies
+// and call the factory function with the resolved dependencies.
+func callFactoryWithAutoDependencies[T any](ctx context.Context, container *Container, factory interface{}) (T, error) {
+	var zero T
+	
+	factoryValue := reflect.ValueOf(factory)
+	factoryType := factoryValue.Type()
+	
+	// Check if it's a function
+	if factoryType.Kind() != reflect.Func {
+		return zero, fmt.Errorf("factory must be a function, got %s", factoryType.Kind())
+	}
+	
+	// Get the number of parameters
+	numIn := factoryType.NumIn()
+	args := make([]reflect.Value, numIn)
+	
+	// Resolve each parameter as a dependency
+	for i := 0; i < numIn; i++ {
+		paramType := factoryType.In(i)
+		
+		// Try to resolve the dependency from the container
+		dependency, err := container.Resolve(paramType)
+		if err != nil {
+			return zero, fmt.Errorf("failed to resolve dependency %d of type %s: %w", i, paramType.String(), err)
+		}
+		
+		args[i] = reflect.ValueOf(dependency)
+	}
+	
+	// Call the factory function
+	results := factoryValue.Call(args)
+	
+	// Handle the return values
+	if len(results) == 0 {
+		return zero, fmt.Errorf("factory function must return at least one value")
+	}
+	
+	// Check if the first result is an error
+	if len(results) > 1 {
+		if err, ok := results[1].Interface().(error); ok && err != nil {
+			return zero, err
+		}
+	}
+	
+	// Return the first result
+	return results[0].Interface().(T), nil
+}
+
+// resolveDependenciesAndCallFactory uses reflection to automatically resolve dependencies
+// and call the original factory function with the resolved dependencies.
+func resolveDependenciesAndCallFactory(ctx context.Context, container *Container, factory interface{}) (interface{}, error) {
+	factoryValue := reflect.ValueOf(factory)
+	factoryType := factoryValue.Type()
+	
+	// Check if it's a function
+	if factoryType.Kind() != reflect.Func {
+		return nil, fmt.Errorf("factory must be a function, got %s", factoryType.Kind())
+	}
+	
+	// Get the number of parameters (should be 2: context.Context and *Container)
+	numIn := factoryType.NumIn()
+	if numIn != 2 {
+		return nil, fmt.Errorf("factory function must have exactly 2 parameters (context.Context, *Container), got %d", numIn)
+	}
+	
+	// Verify the first parameter is context.Context
+	if !factoryType.In(0).Implements(reflect.TypeOf((*context.Context)(nil)).Elem()) {
+		return nil, fmt.Errorf("first parameter must be context.Context")
+	}
+	
+	// Verify the second parameter is *Container
+	if factoryType.In(1) != reflect.TypeOf((*Container)(nil)) {
+		return nil, fmt.Errorf("second parameter must be *Container")
+	}
+	
+	// Call the original factory with the provided parameters
+	args := []reflect.Value{
+		reflect.ValueOf(ctx),
+		reflect.ValueOf(container),
+	}
+	
+	results := factoryValue.Call(args)
+	
+	// Handle the return values (should be (interface{}, error))
+	if len(results) != 2 {
+		return nil, fmt.Errorf("factory function must return exactly 2 values (interface{}, error), got %d", len(results))
+	}
+	
+	// Check for error
+	if !results[1].IsNil() {
+		return nil, results[1].Interface().(error)
+	}
+	
+	return results[0].Interface(), nil
 }
 
 // cloneInstance creates a deep copy of an instance using reflection

@@ -74,25 +74,19 @@ func main() {
 
 	// Add database feature
 	app.AddFeature(
-		orchestrator.WithService[DatabaseService](&databaseService{host: "localhost", port: 5432})(
-			orchestrator.NewFeature("database"),
+		orchestrator.WithComponentFor[DatabaseService](
+			orchestrator.NewFeatureWithInstance("database", DatabaseService(&databaseService{host: "localhost", port: 5432}), orchestrator.Singleton),
+			app,
 		).
-			WithLifetime(orchestrator.Singleton).
-			WithComponent(
-				orchestrator.NewComponent().
-					WithStart(orchestrator.WithStartFunc[DatabaseService](func(db DatabaseService) error {
-						return db.Connect()
-					})).
-					WithStop(orchestrator.WithStopFuncWithApp[DatabaseService](app, func(db DatabaseService) error {
-						return db.Disconnect()
-					})).
-					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
-						return orchestrator.HealthStatus{
-							Status:  "healthy",
-							Message: "Database is connected",
-						}
-					}),
-			),
+			WithStartFor(func(db DatabaseService) error { return db.Connect() }).
+			WithStopFor(func(db DatabaseService) error { return db.Disconnect() }).
+			WithHealthFor(func(db DatabaseService) orchestrator.HealthStatus {
+				return orchestrator.HealthStatus{
+					Status:  "healthy",
+					Message: "Database is connected",
+				}
+			}).
+			Build(),
 	)
 
 	// Add API feature that depends on database

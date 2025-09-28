@@ -24,10 +24,7 @@ func main() {
 
 	// Register the service as an interface
 	app.AddFeature(
-		orchestrator.WithService[TestService](&testService{})(
-			orchestrator.NewFeature("test"),
-		).
-			WithLifetime(orchestrator.Singleton),
+		orchestrator.NewFeatureWithInstance("test", TestService(&testService{}), orchestrator.Singleton),
 	)
 
 	// Start the app to register services

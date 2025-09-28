@@ -40,25 +40,19 @@ func main() {
 
 	// Add a simple feature
 	app.AddFeature(
-		orchestrator.WithService[*SimpleService](&SimpleService{name: "basic-service"})(
-			orchestrator.NewFeature("basic-service"),
+		orchestrator.WithComponentFor[*SimpleService](
+			orchestrator.NewFeatureWithInstance("basic-service", &SimpleService{name: "basic-service"}, orchestrator.Singleton),
+			app,
 		).
-			WithLifetime(orchestrator.Singleton).
-			WithComponent(
-				orchestrator.NewComponent().
-					WithStart(orchestrator.WithStartFunc[*SimpleService](func(service *SimpleService) error {
-						return service.Start()
-					})).
-					WithStop(orchestrator.WithStopFuncWithApp[*SimpleService](app, func(service *SimpleService) error {
-						return service.Stop()
-					})).
-					WithHealth(orchestrator.WithHealthFunc[*SimpleService](app, func(service *SimpleService) orchestrator.HealthStatus {
-						return orchestrator.HealthStatus{
-							Status:  service.Health(),
-							Message: "Service is running",
-						}
-					})),
-			),
+			WithStartFor(func(service *SimpleService) error { return service.Start() }).
+			WithStopFor(func(service *SimpleService) error { return service.Stop() }).
+			WithHealthFor(func(service *SimpleService) orchestrator.HealthStatus {
+				return orchestrator.HealthStatus{
+					Status:  service.Health(),
+					Message: "Service is running",
+				}
+			}).
+			Build(),
 	)
 
 	// Start the application

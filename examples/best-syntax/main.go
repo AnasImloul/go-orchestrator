@@ -116,10 +116,10 @@ func main() {
 	// Create application with default configuration
 	app := orchestrator.New()
 
-	// Method 1: Ultra-clean syntax using NewFeatureWithService
+	// Method 1: Ultra-clean syntax using NewFeatureWithInstance (factory-based)
 	app.AddFeature(
 		orchestrator.WithComponentFor[DatabaseService](
-			orchestrator.NewFeatureWithService("database", DatabaseService(&databaseService{host: "localhost", port: 5432}), orchestrator.Singleton),
+			orchestrator.NewFeatureWithInstance("database", DatabaseService(&databaseService{host: "localhost", port: 5432}), orchestrator.Singleton),
 			app,
 		).
 			WithStartFor(func(db DatabaseService) error { return db.Connect() }).
@@ -127,10 +127,10 @@ func main() {
 			Build(),
 	)
 
-	// Method 2: Clean syntax using NewFeatureWithService with Transient lifetime
+	// Method 2: Clean syntax using NewFeatureWithInstance with Transient lifetime (factory-based)
 	app.AddFeature(
 		orchestrator.WithComponentFor[CacheService](
-			orchestrator.NewFeatureWithService("cache", CacheService(&cacheService{host: "localhost", port: 6379}), orchestrator.Transient),
+			orchestrator.NewFeatureWithInstance("cache", CacheService(&cacheService{host: "localhost", port: 6379}), orchestrator.Transient),
 			app,
 		).
 			WithStartFor(func(cache CacheService) error { return cache.Connect() }).

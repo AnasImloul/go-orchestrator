@@ -89,42 +89,30 @@ func main() {
 
 	// Add services with different lifetimes
 	app.AddFeature(
-		orchestrator.WithService[DatabaseService](&databaseService{host: "localhost", port: 5432})(
-			orchestrator.NewFeature("database"),
+		orchestrator.WithComponentFor[DatabaseService](
+			orchestrator.NewFeatureWithInstance("database", DatabaseService(&databaseService{host: "localhost", port: 5432}), orchestrator.Singleton),
+			app,
 		).
-			WithLifetime(orchestrator.Singleton). // Single instance for entire application
-			WithComponent(
-				orchestrator.NewComponent().
-					WithStart(orchestrator.WithStartFunc[DatabaseService](func(db DatabaseService) error {
-						return db.Connect()
-					})),
-			),
+			WithStartFor(func(db DatabaseService) error { return db.Connect() }).
+			Build(),
 	)
 
 	app.AddFeature(
-		orchestrator.WithService[CacheService](&cacheService{host: "localhost", port: 6379})(
-			orchestrator.NewFeature("cache"),
+		orchestrator.WithComponentFor[CacheService](
+			orchestrator.NewFeatureWithInstance("cache", CacheService(&cacheService{host: "localhost", port: 6379}), orchestrator.Scoped),
+			app,
 		).
-			WithLifetime(orchestrator.Scoped). // One instance per scope (request/operation)
-			WithComponent(
-				orchestrator.NewComponent().
-					WithStart(orchestrator.WithStartFunc[CacheService](func(cache CacheService) error {
-						return cache.Connect()
-					})),
-			),
+			WithStartFor(func(cache CacheService) error { return cache.Connect() }).
+			Build(),
 	)
 
 	app.AddFeature(
-		orchestrator.WithService[LoggerService](&loggerService{})(
-			orchestrator.NewFeature("logger"),
+		orchestrator.WithComponentFor[LoggerService](
+			orchestrator.NewFeatureWithInstance("logger", LoggerService(&loggerService{}), orchestrator.Transient),
+			app,
 		).
-			WithLifetime(orchestrator.Transient). // New instance every time
-			WithComponent(
-				orchestrator.NewComponent().
-					WithStart(orchestrator.WithStartFunc[LoggerService](func(logger LoggerService) error {
-						return logger.Connect()
-					})),
-			),
+			WithStartFor(func(logger LoggerService) error { return logger.Connect() }).
+			Build(),
 	)
 
 	// Start the application
