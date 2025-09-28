@@ -22,7 +22,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.24'
+        go-version: '1.23'
     
     - name: Run tests
       run: |
@@ -33,8 +33,8 @@ jobs:
     - name: Build examples
       run: |
         go build ./cmd/example
-        go build ./examples/basic
-        go build ./examples/advanced
+        go build ./examples/auto-dependencies
+        go build ./examples/best-syntax
     
     - name: Generate changelog
       id: changelog
@@ -138,12 +138,12 @@ jobs:
     
     - name: Create GitHub Release
       if: steps.check_version.outputs.skip_release == 'false'
-      uses: actions/create-release@v1
+      uses: softprops/action-gh-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.next_version.outputs.next_version }}
-        release_name: Release ${{ steps.next_version.outputs.next_version }}
+        name: Release ${{ steps.next_version.outputs.next_version }}
         body: |
           ## Changes in this release:
           
@@ -157,8 +157,7 @@ jobs:
           
           ## Documentation
           
-          - [API Documentation](https://github.com/AnasImloul/go-orchestrator/blob/main/docs/api.md)
+          - [README](https://github.com/AnasImloul/go-orchestrator/blob/main/README.md)
           - [Examples](https://github.com/AnasImloul/go-orchestrator/tree/main/examples)
-          - [Contributing Guide](https://github.com/AnasImloul/go-orchestrator/blob/main/CONTRIBUTING.md)
         draft: false
         prerelease: false

@@ -38,6 +38,12 @@ Thumbs.db
 /dist/
 /bin/
 
+# Example binaries (built by CI)
+cmd/example/example
+cmd/example/example.exe
+examples/*/main
+examples/*/main.exe
+
 # Logs
 *.log
 

@@ -17,7 +17,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.24'
+        go-version: '1.23'
     
     - name: Cache Go modules
       uses: actions/cache@v3
@@ -68,11 +68,12 @@ jobs:
     - name: Build examples
       run: |
         go build ./cmd/example
-        go build ./examples/basic
-        go build ./examples/advanced
+        go build ./examples/auto-dependencies
+        go build ./examples/best-syntax
     
     - name: Build for multiple platforms
       run: |
+        mkdir -p bin
         GOOS=linux GOARCH=amd64 go build -o bin/example-linux-amd64 ./cmd/example
         GOOS=windows GOARCH=amd64 go build -o bin/example-windows-amd64.exe ./cmd/example
         GOOS=darwin GOARCH=amd64 go build -o bin/example-darwin-amd64 ./cmd/example
