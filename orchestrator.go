@@ -619,42 +619,28 @@ func WithLifecycleFor[T any](sd *ServiceDefinition, sr *ServiceRegistry) *Lifecy
 	}
 }
 
-// NewServiceWithFactory creates a new service definition with a service factory using the cleanest syntax.
-// This is the most concise way to create a service definition with a factory.
-func NewServiceWithFactory[T any](name string, factory func(ctx context.Context, container *Container) (T, error), lifetime Lifetime) *ServiceDefinition {
-	return WithServiceFactory[T](factory)(NewService(name)).
-		WithLifetime(lifetime)
-}
-
-// NewServiceWithAutoFactory creates a new service definition with automatic dependency injection.
-// The factory function should only take the dependencies as parameters, and they will be automatically resolved.
-// Dependencies are also automatically discovered and added to the dependency graph.
-func NewServiceWithAutoFactory[T any](name string, factory interface{}, lifetime Lifetime) *ServiceDefinition {
-	// Create a wrapper factory that handles automatic dependency injection
-	wrapperFactory := func(ctx context.Context, container *Container) (T, error) {
-		return callFactoryWithAutoDependencies[T](ctx, container, factory)
-	}
-
-	// Create the service definition with the wrapper factory
-	serviceDef := NewServiceWithFactory(name, wrapperFactory, lifetime)
-
-	// Automatically discover and add dependencies based on factory parameters
-	autoDiscoverDependencies(serviceDef, factory)
-
-	return serviceDef
-}
 
 // NewServiceSingleton creates a new service definition with automatic name inference from interface type.
 // The service name is automatically derived from the interface type name (e.g., DatabaseService -> "database").
 func NewServiceSingleton[T any](instance T) *ServiceDefinition {
-	// Get the type name from the instance
-	serviceType := reflect.TypeOf(instance)
-	serviceName := inferServiceNameFromType(serviceType)
+	// Get the interface type T, not the concrete instance type
+	interfaceType := reflect.TypeOf((*T)(nil)).Elem()
+	serviceName := inferServiceNameFromType(interfaceType)
 	
 	factory := func(ctx context.Context, container *Container) (T, error) {
 		return instance, nil
 	}
-	return NewServiceWithFactory(serviceName, factory, Singleton)
+	
+	// Create service definition directly
+	sd := NewService(serviceName)
+	sd.Services = append(sd.Services, ServiceConfig{
+		Type: interfaceType,
+		Factory:  func(ctx context.Context, container *Container) (interface{}, error) {
+			return factory(ctx, container)
+		},
+		Lifetime: Singleton,
+	})
+	return sd
 }
 
 // NewServiceFactory creates a new service definition with automatic name inference and dependency discovery.
@@ -678,7 +664,14 @@ func NewServiceFactory[T any](factory interface{}, lifetime Lifetime) *ServiceDe
 	}
 	
 	// Create the service definition with the wrapper factory
-	serviceDef := NewServiceWithFactory(serviceName, wrapperFactory, lifetime)
+	serviceDef := NewService(serviceName)
+	serviceDef.Services = append(serviceDef.Services, ServiceConfig{
+		Type: returnType,
+		Factory:  func(ctx context.Context, container *Container) (interface{}, error) {
+			return wrapperFactory(ctx, container)
+		},
+		Lifetime: lifetime,
+	})
 	
 	// Automatically discover and add dependencies based on factory parameters
 	autoDiscoverDependencies(serviceDef, factory)

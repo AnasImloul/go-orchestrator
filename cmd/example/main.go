@@ -52,19 +52,39 @@ func main() {
 
 	// Register a simple service definition
 	registry.Register(
-		orchestrator.WithLifecycleFor[ExampleService](
-			orchestrator.NewServiceWithInstance("example-service", ExampleService(&exampleService{name: "example-service"}), orchestrator.Singleton),
-			registry,
+		orchestrator.NewServiceSingleton[ExampleService](
+			&exampleService{name: "example-service"},
 		).
-			WithStartFor(func(service ExampleService) error { return service.Start() }).
-			WithStopFor(func(service ExampleService) error { return service.Stop() }).
-			WithHealthFor(func(service ExampleService) orchestrator.HealthStatus {
-				return orchestrator.HealthStatus{
-					Status:  service.Health(),
-					Message: "Service is running",
-				}
-			}).
-			Build(),
+			WithLifecycle(
+				orchestrator.NewLifecycle().
+					WithStart(func(ctx context.Context, container *orchestrator.Container) error {
+						service, err := orchestrator.ResolveType[ExampleService](container)
+						if err != nil {
+							return err
+						}
+						return service.Start()
+					}).
+					WithStop(func(ctx context.Context) error {
+						service, err := orchestrator.ResolveType[ExampleService](registry.Container())
+						if err != nil {
+							return err
+						}
+						return service.Stop()
+					}).
+					WithHealth(func(ctx context.Context) orchestrator.HealthStatus {
+						service, err := orchestrator.ResolveType[ExampleService](registry.Container())
+						if err != nil {
+							return orchestrator.HealthStatus{
+								Status:  "unhealthy",
+								Message: "Failed to resolve service",
+							}
+						}
+						return orchestrator.HealthStatus{
+							Status:  service.Health(),
+							Message: "Service is running",
+						}
+					}),
+			),
 	)
 
 	// Start the service registry
