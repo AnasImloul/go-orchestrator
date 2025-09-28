@@ -131,6 +131,13 @@ type ComponentBuilder struct {
 	config ComponentConfig
 }
 
+// ComponentBuilderFor provides a type-safe fluent API for building component configurations.
+type ComponentBuilderFor[T any] struct {
+	app     *App
+	builder *ComponentBuilder
+	feature *Feature
+}
+
 // NewComponent creates a new component builder.
 func NewComponent() *ComponentBuilder {
 	return &ComponentBuilder{
@@ -159,6 +166,51 @@ func (cb *ComponentBuilder) WithHealth(health func(ctx context.Context) HealthSt
 // Build returns the component configuration.
 func (cb *ComponentBuilder) Build() ComponentConfig {
 	return cb.config
+}
+
+// WithStartFor sets the start function for the component with type-safe service resolution.
+func (cbf *ComponentBuilderFor[T]) WithStartFor(startFunc func(T) error) *ComponentBuilderFor[T] {
+	cbf.builder.WithStart(func(ctx context.Context, container *Container) error {
+		service, err := ResolveType[T](container)
+		if err != nil {
+			return err
+		}
+		return startFunc(service)
+	})
+	return cbf
+}
+
+// WithStopFor sets the stop function for the component with type-safe service resolution.
+func (cbf *ComponentBuilderFor[T]) WithStopFor(stopFunc func(T) error) *ComponentBuilderFor[T] {
+	cbf.builder.WithStop(func(ctx context.Context) error {
+		service, err := ResolveType[T](cbf.app.Container())
+		if err != nil {
+			return err
+		}
+		return stopFunc(service)
+	})
+	return cbf
+}
+
+// WithHealthFor sets the health function for the component with type-safe service resolution.
+func (cbf *ComponentBuilderFor[T]) WithHealthFor(healthFunc func(T) HealthStatus) *ComponentBuilderFor[T] {
+	cbf.builder.WithHealth(func(ctx context.Context) HealthStatus {
+		service, err := ResolveType[T](cbf.app.Container())
+		if err != nil {
+			return HealthStatus{
+				Status:  "unhealthy",
+				Message: "Failed to resolve service",
+			}
+		}
+		return healthFunc(service)
+	})
+	return cbf
+}
+
+// Build completes the component configuration and returns the feature.
+func (cbf *ComponentBuilderFor[T]) Build() *Feature {
+	cbf.feature.Component = cbf.builder.Build()
+	return cbf.feature
 }
 
 // HealthStatus represents the health status of a component.
@@ -582,6 +634,30 @@ func (f *Feature) WithNamedService(name string, serviceType reflect.Type, factor
 func (f *Feature) WithComponent(builder *ComponentBuilder) *Feature {
 	f.Component = builder.Build()
 	return f
+}
+
+// WithComponentFor creates a component builder with type-safe lifecycle methods.
+// This is a shorthand for common component patterns.
+func WithComponentFor[T any](f *Feature, app *App) *ComponentBuilderFor[T] {
+	return &ComponentBuilderFor[T]{
+		app:      app,
+		builder:  NewComponent(),
+		feature:  f,
+	}
+}
+
+// NewFeatureWithService creates a new feature with a service instance using the cleanest syntax.
+// This is the most concise way to create a feature with a service.
+func NewFeatureWithService[T any](name string, instance T, lifetime Lifetime) *Feature {
+	return WithService[T](instance)(NewFeature(name)).
+		WithLifetime(lifetime)
+}
+
+// NewFeatureWithFactory creates a new feature with a service factory using the cleanest syntax.
+// This is the most concise way to create a feature with a factory.
+func NewFeatureWithFactory[T any](name string, factory func(ctx context.Context, container *Container) (T, error), lifetime Lifetime) *Feature {
+	return WithServiceFactory[T](factory)(NewFeature(name)).
+		WithLifetime(lifetime)
 }
 
 // WithRetryConfig sets the retry configuration for the feature.
