@@ -40,11 +40,15 @@ jobs:
       id: changelog
       run: |
         # Get the latest tag
-        LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+        LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
         echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
         
-        # Get commits since last tag
-        COMMITS=$(git log --pretty=format:"- %s (%h)" ${LATEST_TAG}..HEAD)
+        # Get commits since last tag (or all commits if no tags exist)
+        if [ -z "$LATEST_TAG" ]; then
+          COMMITS=$(git log --pretty=format:"- %s (%h)" HEAD)
+        else
+          COMMITS=$(git log --pretty=format:"- %s (%h)" ${LATEST_TAG}..HEAD)
+        fi
         echo "commits<<EOF" >> $GITHUB_OUTPUT
         echo "$COMMITS" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
@@ -77,11 +81,18 @@ jobs:
         LATEST_TAG="${{ steps.changelog.outputs.latest_tag }}"
         VERSION_BUMP="${{ steps.version.outputs.version_bump }}"
         
-        # Remove 'v' prefix if present
-        VERSION=${LATEST_TAG#v}
-        
-        # Split version into parts
-        IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+        # If no tags exist, start with v1.0.0
+        if [ -z "$LATEST_TAG" ]; then
+          MAJOR=1
+          MINOR=0
+          PATCH=0
+        else
+          # Remove 'v' prefix if present
+          VERSION=${LATEST_TAG#v}
+          
+          # Split version into parts
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+        fi
         
         # Increment based on version bump
         case $VERSION_BUMP in
