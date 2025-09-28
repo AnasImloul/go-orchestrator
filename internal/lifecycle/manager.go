@@ -295,17 +295,40 @@ func (lm *DefaultLifecycleManager) HealthCheck(ctx context.Context) map[string]C
 
 	health := make(map[string]ComponentHealth)
 
-	for name, state := range lm.states {
-		if node, exists := lm.dag.GetNode(name); exists {
+	// Get components in dependency order (dependencies first)
+	startupOrder, err := lm.dag.GetStartupOrder()
+	if err != nil {
+		// If we can't get the order, fall back to the original approach
+		for name, state := range lm.states {
+			if node, exists := lm.dag.GetNode(name); exists {
+				componentHealth := node.Component.Health(ctx)
+				health[name] = componentHealth
+
+				// Update the stored state
+				state.Health = componentHealth
+			} else {
+				health[name] = ComponentHealth{
+					Status:    HealthStatusUnknown,
+					Message:   "Component not found in DAG",
+					Timestamp: time.Now(),
+				}
+			}
+		}
+		return health
+	}
+
+	// Health check in dependency order
+	for _, node := range startupOrder {
+		if state, exists := lm.states[node.Name]; exists {
 			componentHealth := node.Component.Health(ctx)
-			health[name] = componentHealth
+			health[node.Name] = componentHealth
 
 			// Update the stored state
 			state.Health = componentHealth
 		} else {
-			health[name] = ComponentHealth{
+			health[node.Name] = ComponentHealth{
 				Status:    HealthStatusUnknown,
-				Message:   "Component not found in DAG",
+				Message:   "Component state not found",
 				Timestamp: time.Now(),
 			}
 		}

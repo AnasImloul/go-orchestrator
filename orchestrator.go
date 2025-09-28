@@ -776,17 +776,80 @@ func (c *serviceComponent) Health(ctx context.Context) lifecycle.ComponentHealth
 						Timestamp: time.Now(),
 					}
 				} else {
-					// Has dependencies, provide dependency health aggregation
-					// For now, assume all dependencies are healthy to avoid recursion
-					// TODO: Implement proper dependency health checking without recursion
+					// Has dependencies, check their health and aggregate
+					dependencyHealths := make(map[string]lifecycle.ComponentHealth)
+					overallStatus := lifecycle.HealthStatusHealthy
+					unhealthyCount := 0
+					degradedCount := 0
+					
+					// Check health of each dependency
+					for _, depName := range dependencies {
+						// Get the dependency component state from the lifecycle manager
+						if depState, exists := c.serviceRegistry.lifecycleManager.GetComponentState(depName); exists {
+							// For automatic health detection, we need to get fresh health status
+							// But we need to avoid recursion. Let's use a simple approach:
+							// If the stored health is recent (within last 5 seconds), use it
+							// Otherwise, assume healthy to avoid recursion
+							depHealth := depState.Health
+							
+							// Check if the health status is recent (within 5 seconds)
+							if time.Since(depHealth.Timestamp) < 5*time.Second {
+								// Use the stored health status
+								dependencyHealths[depName] = depHealth
+							} else {
+								// Health status is stale, assume healthy to avoid recursion
+								depHealth = lifecycle.ComponentHealth{
+									Status:    lifecycle.HealthStatusHealthy,
+									Message:   "Dependency health assumed healthy (stale status, recursion prevention)",
+									Timestamp: time.Now(),
+								}
+								dependencyHealths[depName] = depHealth
+							}
+							
+							// Aggregate health status (unhealthy > degraded > healthy)
+							switch depHealth.Status {
+							case lifecycle.HealthStatusUnhealthy:
+								overallStatus = lifecycle.HealthStatusUnhealthy
+								unhealthyCount++
+							case lifecycle.HealthStatusDegraded:
+								if overallStatus != lifecycle.HealthStatusUnhealthy {
+									overallStatus = lifecycle.HealthStatusDegraded
+								}
+								degradedCount++
+							}
+						} else {
+							// Dependency not found, consider it unhealthy
+							dependencyHealths[depName] = lifecycle.ComponentHealth{
+								Status:    lifecycle.HealthStatusUnhealthy,
+								Message:   "Dependency not found",
+								Timestamp: time.Now(),
+							}
+							overallStatus = lifecycle.HealthStatusUnhealthy
+							unhealthyCount++
+						}
+					}
+					
+					// Generate appropriate message based on aggregated status
+					var message string
+					switch overallStatus {
+					case lifecycle.HealthStatusUnhealthy:
+						message = fmt.Sprintf("Service unhealthy (%d/%d dependencies unhealthy, auto-detected)", unhealthyCount, len(dependencies))
+					case lifecycle.HealthStatusDegraded:
+						message = fmt.Sprintf("Service degraded (%d/%d dependencies degraded, auto-detected)", degradedCount, len(dependencies))
+					default:
+						message = fmt.Sprintf("Service healthy (all %d dependencies healthy, auto-detected)", len(dependencies))
+					}
+					
 					return lifecycle.ComponentHealth{
-						Status:    lifecycle.HealthStatusHealthy,
-						Message:   fmt.Sprintf("Service healthy (all %d dependencies assumed healthy, auto-detected)", len(dependencies)),
+						Status:    overallStatus,
+						Message:   message,
 						Details: map[string]interface{}{
-							"auto_detected":          true,
-							"total_dependencies":     len(dependencies),
-							"dependencies":           dependencies,
-							"note":                   "Dependency health aggregation (recursion prevention)",
+							"auto_detected":      true,
+							"total_dependencies": len(dependencies),
+							"dependencies":       dependencies,
+							"dependency_healths": dependencyHealths,
+							"unhealthy_count":    unhealthyCount,
+							"degraded_count":     degradedCount,
 						},
 						Timestamp: time.Now(),
 					}
@@ -921,17 +984,12 @@ func NewAutoServiceFactory[T any](factory interface{}, lifetime Lifetime) *Typed
 				// This will be handled by the serviceComponent.Stop method
 				return nil
 			},
-			Health: func(ctx context.Context) HealthStatus {
-				// Try to call Health method if it exists
-				// We'll use the serviceComponent's container instead of creating a new one
-				// This will be handled by the serviceComponent.Health method
-				return HealthStatus{
-					Status:  HealthStatusUnknown,
-					Message: "Using automatic health detection",
-				}
-			},
+			// No Health function - let serviceComponent.Health handle automatic detection
 		},
 	}
+
+	// Automatically discover and add dependencies based on factory parameters
+	autoDiscoverDependenciesTyped(serviceDef, factory)
 
 	return serviceDef
 }
