@@ -239,7 +239,6 @@ func (d *DAG) hasCycle(name string) error {
 	return nil
 }
 
-
 // calculateLevels calculates the dependency level for each node
 func (d *DAG) calculateLevels(levels map[string]int) {
 	d.resetVisited()
